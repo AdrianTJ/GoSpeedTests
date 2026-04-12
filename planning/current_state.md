@@ -24,11 +24,13 @@
 - [x] Project Roadmap & Strategy defined
 - [x] Initializing Go Module and project skeleton
 - [x] Network Collector (`internal/collector/network`) TDD cycle
+- [x] Basic CLI (`cmd/gost`) for live testing
 
 ### In Progress
 - [ ] Database Store (`internal/store`) abstraction
 - [ ] Job State Machine (`internal/job`)
-- [ ] API Server (`cmd/gostd`) & CLI (`cmd/gost`)
+- [ ] API Server (`cmd/gostd`)
+
 
 ---
 
