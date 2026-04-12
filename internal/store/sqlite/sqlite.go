@@ -123,8 +123,42 @@ func (s *sqliteStore) UpdateJobStatus(ctx context.Context, id string, status sto
 }
 
 func (s *sqliteStore) ListJobs(ctx context.Context, limit int) ([]store.Job, error) {
-	// Simple implementation for now
-	return nil, fmt.Errorf("not implemented")
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, url, status, tiers, runs, timeout_s, tags, error, created_at, started_at, completed_at
+		 FROM jobs ORDER BY created_at DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jobs []store.Job
+	for rows.Next() {
+		var job store.Job
+		var tiersJSON, tagsJSON sql.NullString
+		var startedAt, completedAt sql.NullTime
+
+		err := rows.Scan(
+			&job.ID, &job.URL, &job.Status, &tiersJSON, &job.Runs, &job.TimeoutS, &tagsJSON, &job.Error,
+			&job.CreatedAt, &startedAt, &completedAt)
+		if err != nil {
+			return nil, err
+		}
+
+		if tiersJSON.Valid {
+			_ = json.Unmarshal([]byte(tiersJSON.String), &job.Tiers)
+		}
+		if tagsJSON.Valid {
+			_ = json.Unmarshal([]byte(tagsJSON.String), &job.Tags)
+		}
+		if startedAt.Valid {
+			job.StartedAt = &startedAt.Time
+		}
+		if completedAt.Valid {
+			job.CompletedAt = &completedAt.Time
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs, nil
 }
 
 func (s *sqliteStore) SaveResult(ctx context.Context, result *store.Result) error {
@@ -140,8 +174,38 @@ func (s *sqliteStore) SaveResult(ctx context.Context, result *store.Result) erro
 }
 
 func (s *sqliteStore) GetResultsByJobID(ctx context.Context, jobID string) ([]store.Result, error) {
-	// Simple implementation for now
-	return nil, fmt.Errorf("not implemented")
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, job_id, run_index, network, browser, vitals, collected_at
+		 FROM results WHERE job_id = ? ORDER BY run_index ASC`, jobID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []store.Result
+	for rows.Next() {
+		var res store.Result
+		var networkJSON, browserJSON, vitalsJSON sql.NullString
+
+		err := rows.Scan(&res.ID, &res.JobID, &res.RunIndex, &networkJSON, &browserJSON, &vitalsJSON, &res.CollectedAt)
+		if err != nil {
+			return nil, err
+		}
+
+		if networkJSON.Valid {
+			_ = json.Unmarshal([]byte(networkJSON.String), &res.Network)
+		}
+		// Browser and Vitals placeholders
+		if browserJSON.Valid {
+			_ = json.Unmarshal([]byte(browserJSON.String), &res.Browser)
+		}
+		if vitalsJSON.Valid {
+			_ = json.Unmarshal([]byte(vitalsJSON.String), &res.Vitals)
+		}
+
+		results = append(results, res)
+	}
+	return results, nil
 }
 
 func (s *sqliteStore) Close() error {
