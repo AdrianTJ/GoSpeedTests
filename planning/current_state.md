@@ -22,12 +22,10 @@
 - [x] Technical Documentation (`planning/technical_documentation.md`)
 - [x] Agent Role Definitions (`agents.md`)
 - [x] Project Roadmap & Strategy defined
+- [x] Initializing Go Module and project skeleton
+- [x] Network Collector (`internal/collector/network`) TDD cycle
 
 ### In Progress
-- [ ] Initializing Go Module and project skeleton
-
-### Pending
-- [ ] Network Collector (`internal/collector/network`) TDD cycle
 - [ ] Database Store (`internal/store`) abstraction
 - [ ] Job State Machine (`internal/job`)
 - [ ] API Server (`cmd/gostd`) & CLI (`cmd/gost`)
