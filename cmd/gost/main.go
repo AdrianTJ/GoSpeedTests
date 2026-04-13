@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/ryo/gospeedtest/internal/collector/network"
+	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
 )
 
 func main() {

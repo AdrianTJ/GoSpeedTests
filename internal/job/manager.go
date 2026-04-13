@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/ryo/gospeedtest/internal/collector/network"
-	"github.com/ryo/gospeedtest/internal/store"
+	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
+	"github.com/AdrianTJ/gospeedtest/internal/store"
 )
 
 // Manager handles job orchestration and the worker pool.

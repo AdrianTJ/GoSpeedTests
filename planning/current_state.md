@@ -27,21 +27,24 @@
 - [x] Basic CLI (`cmd/gost`) for live testing
 - [x] Database Store (`internal/store`) abstraction with SQLite implementation
 - [x] Job State Machine (`internal/job`) with worker pool
+- [x] API Server (`cmd/gostd`) with POST /v1/jobs and GET /v1/jobs/{id}
 
 ### In Progress
-- [ ] API Server (`cmd/gostd`)
+- [ ] Browser Collector (`internal/collector/browser`)
 
 ### Pending
-- [ ] Browser Collector (`internal/collector/browser`)
 - [ ] Core Web Vitals Collector (`internal/collector/vitals`)
+- [ ] Refined CLI with full flag support
+- [ ] Postgres Support (`internal/store/postgres`)
 
 ---
 
 ## 3. Next Steps (Short-Term Plan)
 
-1. **Step 5: Minimal API Server (`cmd/gostd`)**
-   - **Plan:** Implement the basic POST /v1/jobs and GET /v1/jobs/{id} endpoints.
-   - **Act:** Set up a `net/http` server that integrates the `Manager` and `Store`.
-   - **Validate:** Use `httptest` to verify job submission and status polling via REST.
+1. **Step 6: Browser Collector (`internal/collector/browser`)**
+   - **Plan:** Integrate `chromedp` to collect full-load metrics (DOM Content Loaded, Page Load Time).
+   - **Act:** Implement `Collect(ctx, url)` using headless Chrome.
+   - **Validate:** Write tests that mock a slow-loading page and verify load time metrics.
+
 
 

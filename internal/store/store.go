@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/ryo/gospeedtest/internal/collector/network"
+	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
 )
 
 // JobStatus represents the current state of a test job.

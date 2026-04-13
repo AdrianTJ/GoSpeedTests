@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ryo/gospeedtest/internal/store"
-	"github.com/ryo/gospeedtest/internal/store/sqlite"
+	"github.com/AdrianTJ/gospeedtest/internal/store"
+	"github.com/AdrianTJ/gospeedtest/internal/store/sqlite"
 )
 
 func TestJobManager(t *testing.T) {

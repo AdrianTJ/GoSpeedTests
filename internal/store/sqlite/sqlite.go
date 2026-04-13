@@ -8,7 +8,7 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/ryo/gospeedtest/internal/store"
+	"github.com/AdrianTJ/gospeedtest/internal/store"
 )
 
 type sqliteStore struct {

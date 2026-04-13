@@ -1,4 +1,4 @@
-module github.com/ryo/gospeedtest
+module github.com/AdrianTJ/gospeedtest
 
 go 1.26.2
 

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ryo/gospeedtest/internal/collector/network"
-	"github.com/ryo/gospeedtest/internal/store"
+	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
+	"github.com/AdrianTJ/gospeedtest/internal/store"
 )
 
 func TestSQLiteStore(t *testing.T) {
