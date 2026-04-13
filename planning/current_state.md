@@ -25,26 +25,25 @@
 - [x] Initializing Go Module and project skeleton
 - [x] Network Collector (`internal/collector/network`) TDD cycle
 - [x] Basic CLI (`cmd/gost`) for live testing
+- [x] Database Store (`internal/store`) abstraction with SQLite implementation
 
 ### In Progress
-- [ ] Database Store (`internal/store`) abstraction
 - [ ] Job State Machine (`internal/job`)
-- [ ] API Server (`cmd/gostd`)
 
+### Pending
+- [ ] API Server (`cmd/gostd`)
+- [ ] Browser Collector (`internal/collector/browser`)
+- [ ] Core Web Vitals Collector (`internal/collector/vitals`)
 
 ---
 
 ## 3. Next Steps (Short-Term Plan)
 
-1. **Step 1: Initialize Project Skeleton**
-   - Run `go mod init github.com/user/gospeedtest` (replace with actual repo path if known).
-   - Create the directory structure: `cmd/`, `internal/`, `schema/`, `config/`, `docs/`, `scripts/`.
+1. **Step 4: Job State Machine (`internal/job`)**
+   - **Plan:** Define a `Worker` and `Manager` to handle async job execution.
+   - **Act:** Implement a worker pool that consumes from a channel of pending jobs.
+   - **Validate:** Write tests to ensure concurrent jobs are processed and results are saved to the store.
 
-2. **Step 2: Network Collector TDD Cycle**
-   - **Plan:** Define `Result` struct for network timings.
-   - **Act:** Write failing tests in `internal/collector/network/collector_test.go` using `httptest`.
-   - **Act:** Implement `Collect` using `net/http/httptrace`.
-   - **Validate:** Ensure all network metrics (DNS, TCP, TLS, TTFB) are captured accurately.
+2. **Step 5: Minimal API Server (`cmd/gostd`)**
+   - **Plan:** Implement the basic POST /v1/jobs and GET /v1/jobs/{id} endpoints.
 
-3. **Step 3: Data Store Definition**
-   - Define the `Store` interface to support both Postgres and SQLite.
