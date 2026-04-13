@@ -26,12 +26,12 @@
 - [x] Network Collector (`internal/collector/network`) TDD cycle
 - [x] Basic CLI (`cmd/gost`) for live testing
 - [x] Database Store (`internal/store`) abstraction with SQLite implementation
+- [x] Job State Machine (`internal/job`) with worker pool
 
 ### In Progress
-- [ ] Job State Machine (`internal/job`)
+- [ ] API Server (`cmd/gostd`)
 
 ### Pending
-- [ ] API Server (`cmd/gostd`)
 - [ ] Browser Collector (`internal/collector/browser`)
 - [ ] Core Web Vitals Collector (`internal/collector/vitals`)
 
@@ -39,11 +39,9 @@
 
 ## 3. Next Steps (Short-Term Plan)
 
-1. **Step 4: Job State Machine (`internal/job`)**
-   - **Plan:** Define a `Worker` and `Manager` to handle async job execution.
-   - **Act:** Implement a worker pool that consumes from a channel of pending jobs.
-   - **Validate:** Write tests to ensure concurrent jobs are processed and results are saved to the store.
-
-2. **Step 5: Minimal API Server (`cmd/gostd`)**
+1. **Step 5: Minimal API Server (`cmd/gostd`)**
    - **Plan:** Implement the basic POST /v1/jobs and GET /v1/jobs/{id} endpoints.
+   - **Act:** Set up a `net/http` server that integrates the `Manager` and `Store`.
+   - **Validate:** Use `httptest` to verify job submission and status polling via REST.
+
 
