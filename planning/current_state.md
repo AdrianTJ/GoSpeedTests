@@ -29,22 +29,25 @@
 - [x] Job State Machine (`internal/job`) with worker pool
 - [x] API Server (`cmd/gostd`) with POST /v1/jobs and GET /v1/jobs/{id}
 - [x] Browser Collector (`internal/collector/browser`) using chromedp
+- [x] Core Web Vitals Collector (`internal/collector/vitals`) using PerformanceObserver
 
 ### In Progress
-- [ ] Core Web Vitals Collector (`internal/collector/vitals`)
+- [ ] Refined CLI with full flag support (`cmd/gost`)
 
 ### Pending
-- [ ] Refined CLI with full flag support
 - [ ] Postgres Support (`internal/store/postgres`)
+- [ ] Multi-run support in CLI (repeating tests)
+- [ ] CSV/Text reporting in CLI
 
 ---
 
 ## 3. Next Steps (Short-Term Plan)
 
-1. **Step 7: Core Web Vitals Collector (`internal/collector/vitals`)**
-   - **Plan:** Inject the `web-vitals` library and extract LCP, CLS, FCP.
-   - **Act:** Implement `Collect(ctx, url)` by evaluating the library in-page.
-   - **Validate:** Test with a sample page and verify the extracted vitals.
+1. **Step 8: Refined CLI (`cmd/gost`)**
+   - **Plan:** Support all flags from technical doc (--runs, --format, --db).
+   - **Act:** Implement flag parsing and result reporting (JSON, Text, CSV).
+   - **Validate:** Verify CLI can persist results to a local SQLite DB via flags.
+
 
 
 
