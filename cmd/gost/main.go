@@ -9,16 +9,25 @@ import (
 	"os"
 	"time"
 
+	"github.com/AdrianTJ/gospeedtest/internal/collector/browser"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
+	"github.com/AdrianTJ/gospeedtest/internal/collector/vitals"
 )
+
+type CombinedResult struct {
+	Network *network.Result `json:"network,omitempty"`
+	Browser *browser.Result `json:"browser,omitempty"`
+	Vitals  *vitals.Result  `json:"vitals,omitempty"`
+}
 
 func main() {
 	urlPtr := flag.String("u", "", "URL to test (required)")
-	timeoutPtr := flag.Int("timeout", 30, "Timeout in seconds")
+	tierPtr := flag.String("t", "all", "Tier to run: network, browser, vitals, all")
+	timeoutPtr := flag.Int("timeout", 60, "Timeout in seconds")
 	flag.Parse()
 
 	if *urlPtr == "" {
-		fmt.Println("Usage: gost -u <url>")
+		fmt.Println("Usage: gost -u <url> [-t tier]")
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
@@ -26,19 +35,42 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*timeoutPtr)*time.Second)
 	defer cancel()
 
-	fmt.Printf("Analyzing network metrics for: %s\n", *urlPtr)
+	fmt.Printf("Analyzing metrics for: %s (Tier: %s)\n", *urlPtr, *tierPtr)
 	fmt.Println("--------------------------------------------------")
 
-	result, err := network.Collect(ctx, *urlPtr)
-	if err != nil {
-		log.Fatalf("Error: %v", err)
+	var res CombinedResult
+	tier := *tierPtr
+
+	if tier == "all" || tier == "network" {
+		fmt.Println("Collecting network metrics...")
+		netRes, err := network.Collect(ctx, *urlPtr)
+		if err != nil {
+			log.Printf("Network collector failed: %v", err)
+		} else {
+			res.Network = netRes
+		}
 	}
 
-	// Format as JSON for clear visibility of all fields
-	out, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		log.Fatalf("Error formatting result: %v", err)
+	if tier == "all" || tier == "browser" {
+		fmt.Println("Collecting browser metrics...")
+		browserRes, err := browser.Collect(ctx, *urlPtr)
+		if err != nil {
+			log.Printf("Browser collector failed: %v", err)
+		} else {
+			res.Browser = browserRes
+		}
 	}
 
+	if tier == "all" || tier == "vitals" {
+		fmt.Println("Collecting Core Web Vitals...")
+		vitalsRes, err := vitals.Collect(ctx, *urlPtr)
+		if err != nil {
+			log.Printf("Vitals collector failed: %v", err)
+		} else {
+			res.Vitals = vitalsRes
+		}
+	}
+
+	out, _ := json.MarshalIndent(res, "", "  ")
 	fmt.Println(string(out))
 }
