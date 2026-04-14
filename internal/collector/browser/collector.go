@@ -33,8 +33,6 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 		res            Result
 		resources      []*network.Request
 		startTime      = time.Now()
-		domContentLoaded float64
-		loadEventEnd     float64
 	)
 
 	// Listen for network events to count resources
@@ -46,27 +44,27 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 	})
 
 	// Perform navigation and extract timings via JS Performance API
+	var timing map[string]float64
 	err := chromedp.Run(taskCtx,
 		network.Enable(),
 		chromedp.Navigate(url),
-		// Wait for the full load event
-		chromedp.WaitVisible("body", chromedp.ByQuery),
+		// Wait until the load event is definitely fired
+		chromedp.WaitReady("body", chromedp.ByQuery),
 		chromedp.Evaluate(`(function() {
 			const t = performance.getEntriesByType("navigation")[0];
 			return {
-				domContentLoaded: t.domContentLoadedEventEnd,
-				loadEventEnd: t.loadEventEnd
+				"domContentLoaded": t.domContentLoadedEventEnd,
+				"loadEventEnd": t.loadEventEnd
 			};
-		})()`, &res),
+		})()`, &timing),
 	)
 
 	if err != nil {
 		return nil, fmt.Errorf("chromedp run failed: %w", err)
 	}
 
-	// Calculate metrics
-	// res.DOMContentLoadedMS and res.PageLoadMS are already populated by Evaluate.
-	// We just need to handle potential zero values if the performance API hasn't finished reporting.
+	res.DOMContentLoadedMS = timing["domContentLoaded"]
+	res.PageLoadMS = timing["loadEventEnd"]
 	res.ResourceCount = len(resources)
 
 	// In case performance API isn't fully ready (loadEventEnd is 0), 

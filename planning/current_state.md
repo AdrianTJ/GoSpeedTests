@@ -28,12 +28,12 @@
 - [x] Database Store (`internal/store`) abstraction with SQLite implementation
 - [x] Job State Machine (`internal/job`) with worker pool
 - [x] API Server (`cmd/gostd`) with POST /v1/jobs and GET /v1/jobs/{id}
+- [x] Browser Collector (`internal/collector/browser`) using chromedp
 
 ### In Progress
-- [ ] Browser Collector (`internal/collector/browser`)
+- [ ] Core Web Vitals Collector (`internal/collector/vitals`)
 
 ### Pending
-- [ ] Core Web Vitals Collector (`internal/collector/vitals`)
 - [ ] Refined CLI with full flag support
 - [ ] Postgres Support (`internal/store/postgres`)
 
@@ -41,10 +41,11 @@
 
 ## 3. Next Steps (Short-Term Plan)
 
-1. **Step 6: Browser Collector (`internal/collector/browser`)**
-   - **Plan:** Integrate `chromedp` to collect full-load metrics (DOM Content Loaded, Page Load Time).
-   - **Act:** Implement `Collect(ctx, url)` using headless Chrome.
-   - **Validate:** Write tests that mock a slow-loading page and verify load time metrics.
+1. **Step 7: Core Web Vitals Collector (`internal/collector/vitals`)**
+   - **Plan:** Inject the `web-vitals` library and extract LCP, CLS, FCP.
+   - **Act:** Implement `Collect(ctx, url)` by evaluating the library in-page.
+   - **Validate:** Test with a sample page and verify the extracted vitals.
+
 
 
 
