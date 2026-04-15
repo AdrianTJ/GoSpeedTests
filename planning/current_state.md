@@ -1,6 +1,6 @@
 # Project Status: GoSpeedTest
 
-**Current Date:** April 11, 2026
+**Current Date:** April 14, 2026
 **Version:** v0.1-dev
 
 ---
@@ -30,25 +30,35 @@
 - [x] API Server (`cmd/gostd`) with POST /v1/jobs and GET /v1/jobs/{id}
 - [x] Browser Collector (`internal/collector/browser`) using chromedp
 - [x] Core Web Vitals Collector (`internal/collector/vitals`) using PerformanceObserver
+- [x] Refined CLI (`cmd/gost`) with full flag support, multi-run, and reporting (JSON/CSV/Text)
 
 ### In Progress
-- [ ] Refined CLI with full flag support (`cmd/gost`)
+- [ ] Postgres Support (`internal/store/postgres`)
 
 ### Pending
-- [ ] Postgres Support (`internal/store/postgres`)
-- [ ] Multi-run support in CLI (repeating tests)
-- [ ] CSV/Text reporting in CLI
+- [ ] Authentication / API keys for `gostd` (Security)
+- [ ] Docker / Container Packaging (Portability)
+- [ ] Webhook callbacks (Automation)
 
 ---
 
 ## 3. Next Steps (Short-Term Plan)
 
-1. **Step 8: Refined CLI (`cmd/gost`)**
-   - **Plan:** Support all flags from technical doc (--runs, --format, --db).
-   - **Act:** Implement flag parsing and result reporting (JSON, Text, CSV).
-   - **Validate:** Verify CLI can persist results to a local SQLite DB via flags.
+1. **Step 9: Postgres Support (`internal/store/postgres`)**
+   - **Plan:** Implement the `Store` interface using `lib/pq` for Postgres.
+   - **Act:** Create SQL migration for Postgres and implement the driver.
+   - **Validate:** Verify persistence with a Postgres container or local instance.
 
+2. **Step 10: Authentication Layer (`internal/api/auth`)**
+   - **Plan:** Implement simple API key-based authentication for `gostd`.
+   - **Act:** Add middleware to validate an `X-API-Key` header.
+   - **Validate:** Ensure unauthorized requests are rejected with 401.
 
+3. **Step 11: Docker Packaging (`Dockerfile`)**
+   - **Plan:** Create a multi-stage Dockerfile that includes Google Chrome.
+   - **Act:** Build and run the entire suite within a containerized environment.
+   - **Validate:** Verify that browser/vitals collectors work inside the container.
 
-
-
+4. **Step 12: Webhook Support (`internal/job/webhook`)**
+   - **Plan:** Allow users to specify a `webhook_url` during job submission.
+   - **Act:** Post a JSON payload to the URL when a job reaches a terminal state.
