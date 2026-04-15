@@ -59,5 +59,13 @@ This document tracks the key architectural and design decisions made during the 
     - **Docker:** Simplified deployment with Chrome pre-installed.
     - **Webhooks:** Push-based result delivery.
 
+## 10. v0.1 Specification Parity
+**Decision:** Formalize a "Gap Analysis" phase to reach 100% compliance with the v0.1 Technical Design Document.
+- **Rationale:** To ensure the project delivers on its initial promise of history tracking, health monitoring, and a hierarchical configuration system.
+- **Key Implementation Decisions:**
+    - **Config Hierarchy:** Implement a centralized `internal/config` to enforce **Flags > Env > YAML** priority.
+    - **Job Cancellation:** Add a `DELETE` endpoint and internal logic to prune pending jobs from the queue.
+    - **Waterfall Support:** Enhance the `browser` collector to capture network-level events for every sub-resource.
+
 ---
-*Last Updated: April 14, 2026*
+*Last Updated: April 15, 2026*
