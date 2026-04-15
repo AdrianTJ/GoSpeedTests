@@ -20,6 +20,11 @@ func main() {
 		dbURL = "./gospeedtest.db"
 	}
 
+	workerCount, _ := strconv.Atoi(os.Getenv("GOST_WORKERS"))
+	if workerCount <= 0 {
+		workerCount = 4
+	}
+
 	var s store.Store
 	var err error
 
