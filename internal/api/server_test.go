@@ -26,7 +26,7 @@ func TestAPIServer(t *testing.T) {
 	m.Start()
 	defer m.Stop()
 
-	srv := NewServer(m, s)
+	srv := NewServer(m, s, "") // Use empty API key for tests
 	mux := srv.Routes()
 
 	// 1. Test POST /v1/jobs

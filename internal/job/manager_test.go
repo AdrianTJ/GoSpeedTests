@@ -36,7 +36,7 @@ func TestJobManager(t *testing.T) {
 	ctx := context.Background()
 
 	// Submit job
-	job, err := m.Submit(ctx, ts.URL, []string{"network"}, 1)
+	job, err := m.Submit(ctx, ts.URL, []string{"network"}, 1, "")
 	if err != nil {
 		t.Fatalf("failed to submit job: %v", err)
 	}

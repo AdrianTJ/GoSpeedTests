@@ -1,15 +1,18 @@
 package job
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
+	"github.com/google/uuid"
 )
 
 // Manager handles job orchestration and the worker pool.
@@ -50,15 +53,16 @@ func (m *Manager) Stop() {
 }
 
 // Submit enqueues a new job for execution.
-func (m *Manager) Submit(ctx context.Context, url string, tiers []string, runs int) (*store.Job, error) {
+func (m *Manager) Submit(ctx context.Context, url string, tiers []string, runs int, webhookURL string) (*store.Job, error) {
 	job := &store.Job{
-		ID:        "jb_" + uuid.New().String()[:8],
-		URL:       url,
-		Status:    store.StatusPending,
-		Tiers:     tiers,
-		Runs:      runs,
-		TimeoutS:  60, // Default
-		CreatedAt: time.Now(),
+		ID:         "jb_" + uuid.New().String()[:8],
+		URL:        url,
+		Status:     store.StatusPending,
+		Tiers:      tiers,
+		Runs:       runs,
+		TimeoutS:   60, // Default
+		WebhookURL: webhookURL,
+		CreatedAt:  time.Now(),
 	}
 
 	if err := m.store.CreateJob(ctx, job); err != nil {
@@ -134,4 +138,36 @@ func (m *Manager) processJob(job *store.Job) {
 	if err := m.store.UpdateJobStatus(m.ctx, job.ID, status, errStr); err != nil {
 		log.Printf("Failed to update job %s to %s: %v", job.ID, status, err)
 	}
+
+	if job.WebhookURL != "" {
+		go m.sendWebhook(job.ID)
+	}
+}
+
+func (m *Manager) sendWebhook(jobID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	job, err := m.store.GetJob(ctx, jobID)
+	if err != nil || job == nil {
+		return
+	}
+
+	results, _ := m.store.GetResultsByJobID(ctx, jobID)
+
+	payload := map[string]interface{}{
+		"job_id":  job.ID,
+		"status":  job.Status,
+		"url":     job.URL,
+		"results": results,
+	}
+
+	body, _ := json.Marshal(payload)
+	resp, err := http.Post(job.WebhookURL, "application/json", bytes.NewBuffer(body))
+	if err != nil {
+		log.Printf("Webhook failed for job %s: %v", job.ID, err)
+		return
+	}
+	defer resp.Body.Close()
+	log.Printf("Webhook sent for job %s, status: %d", job.ID, resp.StatusCode)
 }

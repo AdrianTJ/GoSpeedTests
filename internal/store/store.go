@@ -27,6 +27,7 @@ type Job struct {
 	Runs        int               `json:"runs"`
 	TimeoutS    int               `json:"timeout_s"`
 	Tags        map[string]string `json:"tags"`
+	WebhookURL  string            `json:"webhook_url,omitempty"`
 	Error       *string           `json:"error,omitempty"`
 	CreatedAt   time.Time         `json:"created_at"`
 	StartedAt   *time.Time        `json:"started_at,omitempty"`

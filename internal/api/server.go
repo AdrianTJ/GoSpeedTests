@@ -48,11 +48,12 @@ func (s *Server) Routes() http.Handler {
 }
 
 type CreateJobRequest struct {
-	URL      string            `json:"url"`
-	Tiers    []string          `json:"tiers"`
-	Runs     int               `json:"runs"`
-	TimeoutS int               `json:"timeout_s"`
-	Tags     map[string]string `json:"tags"`
+	URL        string            `json:"url"`
+	Tiers      []string          `json:"tiers"`
+	Runs       int               `json:"runs"`
+	TimeoutS   int               `json:"timeout_s"`
+	Tags       map[string]string `json:"tags"`
+	WebhookURL string            `json:"webhook_url"`
 }
 
 func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
@@ -71,7 +72,7 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		req.Runs = 1
 	}
 
-	job, err := s.manager.Submit(r.Context(), req.URL, req.Tiers, req.Runs)
+	job, err := s.manager.Submit(r.Context(), req.URL, req.Tiers, req.Runs, req.WebhookURL)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

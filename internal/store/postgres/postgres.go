@@ -8,7 +8,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
-	"github.com/ryo/gospeedtest/internal/store"
+	"github.com/AdrianTJ/gospeedtest/internal/store"
 )
 
 type pgStore struct {

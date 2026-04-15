@@ -17,7 +17,7 @@ func TestGostCLI(t *testing.T) {
 	defer ts.Close()
 
 	// Build the CLI binary (temporary)
-	cmd := exec.Command("/opt/homebrew/bin/go", "run", "main.go", "-u", ts.URL)
+	cmd := exec.Command("/opt/homebrew/bin/go", "run", "main.go", "-u", ts.URL, "-f", "json")
 	cmd.Dir = "." // Current directory cmd/gost
 
 	output, err := cmd.CombinedOutput()
@@ -26,8 +26,8 @@ func TestGostCLI(t *testing.T) {
 	}
 
 	outStr := string(output)
-	if !strings.Contains(outStr, "Analyzing network metrics") {
-		t.Errorf("Expected output to contain 'Analyzing network metrics', got: %s", outStr)
+	if !strings.Contains(outStr, `"url":`) {
+		t.Errorf("Expected JSON output, got: %s", outStr)
 	}
 	if !strings.Contains(outStr, `"status_code": 200`) {
 		t.Errorf("Expected JSON result with status_code 200, got: %s", outStr)
