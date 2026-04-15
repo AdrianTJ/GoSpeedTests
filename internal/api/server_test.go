@@ -72,4 +72,25 @@ func TestAPIServer(t *testing.T) {
 	if getResp["url"] != "http://example.com" {
 		t.Errorf("expected url http://example.com, got %s", getResp["url"])
 	}
+
+	// 3. Test Authentication (with an API key)
+	srvWithAuth := NewServer(m, s, "secret-key")
+	muxWithAuth := srvWithAuth.Routes()
+
+	// 3a. Unauthorized request
+	req = httptest.NewRequest("GET", "/v1/jobs/"+jobID, nil)
+	w = httptest.NewRecorder()
+	muxWithAuth.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 Unauthorized, got %d", w.Code)
+	}
+
+	// 3b. Authorized request
+	req = httptest.NewRequest("GET", "/v1/jobs/"+jobID, nil)
+	req.Header.Set("X-API-Key", "secret-key")
+	w = httptest.NewRecorder()
+	muxWithAuth.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 OK with valid API key, got %d", w.Code)
+	}
 }

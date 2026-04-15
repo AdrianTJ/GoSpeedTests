@@ -66,4 +66,24 @@ func TestJobManager(t *testing.T) {
 	if results[0].Network.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", results[0].Network.StatusCode)
 	}
+
+	// Test Webhook
+	webhookReceived := make(chan bool, 1)
+	webhookServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		webhookReceived <- true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer webhookServer.Close()
+
+	_, err = m.Submit(ctx, ts.URL, []string{"network"}, 1, webhookServer.URL)
+	if err != nil {
+		t.Fatalf("failed to submit job with webhook: %v", err)
+	}
+
+	select {
+	case <-webhookReceived:
+		// Success
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for webhook")
+	}
 }

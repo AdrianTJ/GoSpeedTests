@@ -41,6 +41,7 @@ func (s *sqliteStore) initSchema() error {
 		runs         INTEGER     NOT NULL DEFAULT 1,
 		timeout_s    INTEGER     NOT NULL DEFAULT 60,
 		tags         TEXT,
+		webhook_url  TEXT,
 		error        TEXT,
 		created_at   DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		started_at   DATETIME,
@@ -69,9 +70,9 @@ func (s *sqliteStore) CreateJob(ctx context.Context, job *store.Job) error {
 	tagsJSON, _ := json.Marshal(job.Tags)
 
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO jobs (id, url, status, tiers, runs, timeout_s, tags, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		job.ID, job.URL, job.Status, string(tiersJSON), job.Runs, job.TimeoutS, string(tagsJSON), job.CreatedAt)
+		`INSERT INTO jobs (id, url, status, tiers, runs, timeout_s, tags, webhook_url, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		job.ID, job.URL, job.Status, string(tiersJSON), job.Runs, job.TimeoutS, string(tagsJSON), job.WebhookURL, job.CreatedAt)
 	return err
 }
 
@@ -81,9 +82,9 @@ func (s *sqliteStore) GetJob(ctx context.Context, id string) (*store.Job, error)
 	var startedAt, completedAt sql.NullTime
 
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, url, status, tiers, runs, timeout_s, tags, error, created_at, started_at, completed_at
+		`SELECT id, url, status, tiers, runs, timeout_s, tags, webhook_url, error, created_at, started_at, completed_at
 		 FROM jobs WHERE id = ?`, id).Scan(
-		&job.ID, &job.URL, &job.Status, &tiersJSON, &job.Runs, &job.TimeoutS, &tagsJSON, &job.Error,
+		&job.ID, &job.URL, &job.Status, &tiersJSON, &job.Runs, &job.TimeoutS, &tagsJSON, &job.WebhookURL, &job.Error,
 		&job.CreatedAt, &startedAt, &completedAt)
 
 	if err == sql.ErrNoRows {
@@ -124,7 +125,7 @@ func (s *sqliteStore) UpdateJobStatus(ctx context.Context, id string, status sto
 
 func (s *sqliteStore) ListJobs(ctx context.Context, limit int) ([]store.Job, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, url, status, tiers, runs, timeout_s, tags, error, created_at, started_at, completed_at
+		`SELECT id, url, status, tiers, runs, timeout_s, tags, webhook_url, error, created_at, started_at, completed_at
 		 FROM jobs ORDER BY created_at DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
@@ -138,7 +139,7 @@ func (s *sqliteStore) ListJobs(ctx context.Context, limit int) ([]store.Job, err
 		var startedAt, completedAt sql.NullTime
 
 		err := rows.Scan(
-			&job.ID, &job.URL, &job.Status, &tiersJSON, &job.Runs, &job.TimeoutS, &tagsJSON, &job.Error,
+			&job.ID, &job.URL, &job.Status, &tiersJSON, &job.Runs, &job.TimeoutS, &tagsJSON, &job.WebhookURL, &job.Error,
 			&job.CreatedAt, &startedAt, &completedAt)
 		if err != nil {
 			return nil, err
