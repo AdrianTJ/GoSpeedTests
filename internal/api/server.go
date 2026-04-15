@@ -12,20 +12,39 @@ import (
 type Server struct {
 	manager *job.Manager
 	store   store.Store
+	apiKey  string
 }
 
-func NewServer(m *job.Manager, s store.Store) *Server {
+func NewServer(m *job.Manager, s store.Store, apiKey string) *Server {
 	return &Server{
 		manager: m,
 		store:   s,
+		apiKey:  apiKey,
 	}
+}
+
+func (s *Server) authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.apiKey == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		key := r.Header.Get("X-API-Key")
+		if key != s.apiKey {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/jobs", s.handleCreateJob)
-	mux.HandleFunc("GET /v1/jobs/", s.handleGetJob) // Matches /v1/jobs/{id}
-	return mux
+	mux.HandleFunc("GET /v1/jobs/", s.handleGetJob)
+
+	return s.authMiddleware(mux)
 }
 
 type CreateJobRequest struct {

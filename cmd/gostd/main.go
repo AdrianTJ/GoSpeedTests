@@ -5,24 +5,32 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/AdrianTJ/gospeedtest/internal/api"
 	"github.com/AdrianTJ/gospeedtest/internal/job"
+	"github.com/AdrianTJ/gospeedtest/internal/store"
+	"github.com/AdrianTJ/gospeedtest/internal/store/postgres"
 	"github.com/AdrianTJ/gospeedtest/internal/store/sqlite"
 )
 
 func main() {
-	dbPath := os.Getenv("DATABASE_URL")
-	if dbPath == "" {
-		dbPath = "./gospeedtest.db"
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		dbURL = "./gospeedtest.db"
 	}
 
-	workerCount, _ := strconv.Atoi(os.Getenv("GOST_WORKERS"))
-	if workerCount <= 0 {
-		workerCount = 4
+	var s store.Store
+	var err error
+
+	if strings.HasPrefix(dbURL, "postgres://") || strings.HasPrefix(dbURL, "postgresql://") {
+		log.Println("Using Postgres backend")
+		s, err = postgres.NewStore(dbURL)
+	} else {
+		log.Println("Using SQLite backend")
+		s, err = sqlite.NewStore(dbURL)
 	}
 
-	s, err := sqlite.NewStore(dbPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize store: %v", err)
 	}
@@ -32,7 +40,8 @@ func main() {
 	m.Start()
 	defer m.Stop()
 
-	srv := api.NewServer(m, s)
+	apiKey := os.Getenv("GOST_API_KEY")
+	srv := api.NewServer(m, s, apiKey)
 
 	addr := os.Getenv("GOST_LISTEN_ADDR")
 	if addr == "" {
