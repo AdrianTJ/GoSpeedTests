@@ -47,8 +47,17 @@ This document tracks the key architectural and design decisions made during the 
 
 ## 8. Dependencies
 **Decision:** Stick to the "Approved Dependencies" list in the Technical Documentation.
-- **Approved List:** `chromedp`, `go-sqlite3`, `lib/pq` (planned), `uuid`, `yaml.v3`.
+- **Approved List:** `chromedp`, `go-sqlite3`, `lib/pq`, `uuid`, `yaml.v3`.
 - **Rationale:** Keeps the project lightweight and maintainable while ensuring we use the de-facto standards for Go performance and database work.
+
+## 9. Strategic Expansion: Production Readiness
+**Decision:** Prioritize features that enable production-grade deployments (Postgres, Auth, Docker, Webhooks).
+- **Rationale:** While SQLite is excellent for local use, these additions ensure GoSpeedTest can scale to multi-node environments and integrate seamlessly with CI/CD and automation pipelines.
+- **Components:**
+    - **Postgres:** Multi-user, high-concurrency storage.
+    - **Auth:** Basic security for the API daemon.
+    - **Docker:** Simplified deployment with Chrome pre-installed.
+    - **Webhooks:** Push-based result delivery.
 
 ---
 *Last Updated: April 14, 2026*
