@@ -14,4 +14,5 @@ require (
 	github.com/lib/pq v1.12.3 // indirect
 	github.com/mattn/go-sqlite3 v1.14.42 // indirect
 	golang.org/x/sys v0.42.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

@@ -1,13 +1,14 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/AdrianTJ/gospeedtest/internal/api"
+	"github.com/AdrianTJ/gospeedtest/internal/config"
 	"github.com/AdrianTJ/gospeedtest/internal/job"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
 	"github.com/AdrianTJ/gospeedtest/internal/store/postgres"
@@ -15,19 +16,20 @@ import (
 )
 
 func main() {
-	dbURL := os.Getenv("DATABASE_URL")
+	configPath := flag.String("config", "config.yaml", "Path to config file")
+	flag.Parse()
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	dbURL := cfg.DBURL
 	if dbURL == "" {
 		dbURL = "./gospeedtest.db"
 	}
 
-	workerCount, _ := strconv.Atoi(os.Getenv("GOST_WORKERS"))
-	if workerCount <= 0 {
-		workerCount = 4
-	}
-
 	var s store.Store
-	var err error
-
 	if strings.HasPrefix(dbURL, "postgres://") || strings.HasPrefix(dbURL, "postgresql://") {
 		log.Println("Using Postgres backend")
 		s, err = postgres.NewStore(dbURL)
@@ -41,20 +43,14 @@ func main() {
 	}
 	defer s.Close()
 
-	m := job.NewManager(s, workerCount, 256)
+	m := job.NewManager(s, cfg.Workers, cfg.QueueDepth)
 	m.Start()
 	defer m.Stop()
 
-	apiKey := os.Getenv("GOST_API_KEY")
-	srv := api.NewServer(m, s, apiKey)
+	srv := api.NewServer(m, s, cfg.APIKey)
 
-	addr := os.Getenv("GOST_LISTEN_ADDR")
-	if addr == "" {
-		addr = ":8080"
-	}
-
-	log.Printf("Starting gostd API server on %s", addr)
-	if err := http.ListenAndServe(addr, srv.Routes()); err != nil {
+	log.Printf("Starting gostd API server on %s", cfg.ListenAddr)
+	if err := http.ListenAndServe(cfg.ListenAddr, srv.Routes()); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
 }

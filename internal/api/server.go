@@ -41,10 +41,38 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/health", s.handleHealth)
+	mux.HandleFunc("GET /v1/ready", s.handleReady)
 	mux.HandleFunc("POST /v1/jobs", s.handleCreateJob)
-	mux.HandleFunc("GET /v1/jobs/", s.handleGetJob)
+	mux.HandleFunc("GET /v1/jobs", s.handleListJobs) // Exact match for listing
+	mux.HandleFunc("GET /v1/jobs/", s.handleGetJob)  // Prefix match for ID
 
 	return s.authMiddleware(mux)
+}
+
+func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
+	jobs, err := s.store.ListJobs(r.Context(), 50)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(jobs)
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status":"ok"}`))
+}
+
+func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
+	// Simple check: can we talk to the store?
+	if _, err := s.store.ListJobs(r.Context(), 1); err != nil {
+		http.Error(w, "store not ready", http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status":"ready"}`))
 }
 
 type CreateJobRequest struct {
