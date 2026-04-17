@@ -93,4 +93,34 @@ func TestAPIServer(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200 OK with valid API key, got %d", w.Code)
 	}
+
+	// 4. Test Health & Ready
+	req = httptest.NewRequest("GET", "/v1/health", nil)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected health 200, got %d", w.Code)
+	}
+
+	req = httptest.NewRequest("GET", "/v1/ready", nil)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected ready 200, got %d", w.Code)
+	}
+
+	// 5. Test List Jobs
+	req = httptest.NewRequest("GET", "/v1/jobs", nil)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected list jobs 200, got %d", w.Code)
+	}
+	var jobs []store.Job
+	if err := json.Unmarshal(w.Body.Bytes(), &jobs); err != nil {
+		t.Fatalf("failed to unmarshal jobs list: %v", err)
+	}
+	if len(jobs) < 1 {
+		t.Error("expected at least 1 job in list")
+	}
 }
