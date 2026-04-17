@@ -124,4 +124,26 @@ func TestAPIServer(t *testing.T) {
 	if len(jobs) < 1 {
 		t.Error("expected at least 1 job in list")
 	}
+
+	// 6. Test Edge Cases
+	// 6a. POST without URL
+	req = httptest.NewRequest("POST", "/v1/jobs", bytes.NewReader([]byte(`{"runs": 1}`)))
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 Bad Request for missing URL, got %d", w.Code)
+	}
+
+	// 6b. GET History for unknown URL
+	req = httptest.NewRequest("GET", "/v1/history?url=https://not-exists.com", nil)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 OK for empty history, got %d", w.Code)
+	}
+	var history map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &history)
+	if history["test_count"].(float64) != 0 {
+		t.Errorf("expected 0 tests in history, got %v", history["test_count"])
+	}
 }

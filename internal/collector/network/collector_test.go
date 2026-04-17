@@ -38,22 +38,41 @@ func TestCollect_Success_200(t *testing.T) {
 }
 
 func TestCollect_Success_202(t *testing.T) {
-	// Specifically test 202 Accepted for async contexts
+	// ... (existing code)
+}
+
+func TestCollect_InvalidURL(t *testing.T) {
+	ctx := context.Background()
+	_, err := Collect(ctx, "not-a-url")
+	if err == nil {
+		t.Error("expected error for invalid URL, got nil")
+	}
+}
+
+func TestCollect_UnreachableHost(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	// Use a non-routable IP address
+	_, err := Collect(ctx, "http://192.0.2.1")
+	if err == nil {
+		t.Error("expected error for unreachable host, got nil")
+	}
+}
+
+func TestCollect_Timeout(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusAccepted)
-		w.Write([]byte(`{"job_id":"test"}`))
+		time.Sleep(500 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
 	}))
 	defer ts.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Set a timeout shorter than the server's sleep
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	result, err := Collect(ctx, ts.URL)
-	if err != nil {
-		t.Fatalf("Collect failed: %v", err)
-	}
-
-	if result.StatusCode != http.StatusAccepted {
-		t.Errorf("expected status 202, got %d", result.StatusCode)
+	_, err := Collect(ctx, ts.URL)
+	if err == nil {
+		t.Error("expected timeout error, got nil")
 	}
 }

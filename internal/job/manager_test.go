@@ -87,3 +87,35 @@ func TestJobManager(t *testing.T) {
 		t.Error("timed out waiting for webhook")
 	}
 }
+
+func TestJobManager_QueueFull(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "job-full-test")
+	defer os.RemoveAll(tmpDir)
+	s, _ := sqlite.NewStore(filepath.Join(tmpDir, "test.db"))
+	
+	// Create manager with 0 workers so queue stays full
+	m := NewManager(s, 0, 1)
+	
+	ctx := context.Background()
+	_, err := m.Submit(ctx, "http://example.com", []string{"network"}, 1, "")
+	if err != nil {
+		t.Fatalf("first submission failed: %v", err)
+	}
+
+	_, err = m.Submit(ctx, "http://example.com", []string{"network"}, 1, "")
+	if err == nil || err.Error() != "job queue is full" {
+		t.Errorf("expected 'job queue is full' error, got %v", err)
+	}
+}
+
+func TestJobManager_CancelNonExistent(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "job-cancel-test")
+	defer os.RemoveAll(tmpDir)
+	s, _ := sqlite.NewStore(filepath.Join(tmpDir, "test.db"))
+	m := NewManager(s, 1, 1)
+
+	err := m.CancelJob(context.Background(), "non-existent")
+	if err == nil {
+		t.Error("expected error when cancelling non-existent job, got nil")
+	}
+}
