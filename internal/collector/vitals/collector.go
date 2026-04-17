@@ -30,10 +30,9 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 	var res Result
 
 	// This script uses the PerformanceObserver API to capture CWV metrics.
-	// It's a simplified version of what the web-vitals library does.
 	const script = `
 		(function() {
-			window.__vitals = { fcp: 0, lcp: 0, cls: 0 };
+			window.__vitals = { fcp: 0, lcp: 0, cls: 0, inp: 0 };
 			
 			// FCP
 			new PerformanceObserver((entryList) => {
@@ -57,6 +56,15 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 					}
 				}
 			}).observe({type: 'layout-shift', buffered: true});
+
+			// INP (Interaction to Next Paint)
+			new PerformanceObserver((entryList) => {
+				for (const entry of entryList.getEntries()) {
+					if (entry.duration > window.__vitals.inp) {
+						window.__vitals.inp = entry.duration;
+					}
+				}
+			}).observe({type: 'event-timing', buffered: true, durationThreshold: 0});
 		})();
 	`
 
@@ -68,14 +76,17 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 		}),
 		// Wait for the page to be somewhat stable
 		chromedp.WaitReady("body", chromedp.ByQuery),
-		chromedp.Sleep(2 * time.Second),
+		chromedp.Sleep(1 * time.Second),
+		// Inject synthetic interactions to trigger INP
+		chromedp.Click("body", chromedp.ByQuery),
+		chromedp.Sleep(1 * time.Second),
 		chromedp.Evaluate(`(function() {
 			if (!window.__vitals) return { lcp_ms: 0, cls_score: 0, fcp_ms: 0, inp_ms: 0 };
 			return {
 				lcp_ms: window.__vitals.lcp || 0,
 				cls_score: window.__vitals.cls || 0,
 				fcp_ms: window.__vitals.fcp || 0,
-				inp_ms: 0
+				inp_ms: window.__vitals.inp || 0
 			};
 		})()`, &res),
 	)

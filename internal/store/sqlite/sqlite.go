@@ -209,6 +209,32 @@ func (s *sqliteStore) GetResultsByJobID(ctx context.Context, jobID string) ([]st
 	return results, nil
 }
 
+func (s *sqliteStore) GetHistory(ctx context.Context, url string) (interface{}, error) {
+	query := `
+		SELECT 
+			COUNT(*) as test_count,
+			ROUND(AVG(json_extract(r.network, '$.ttfb_ms')), 2) as avg_ttfb_ms,
+			ROUND(AVG(json_extract(r.network, '$.total_ms')), 2) as avg_total_ms
+		FROM results r
+		JOIN jobs j ON r.job_id = j.id
+		WHERE j.url = ?
+	`
+	var count int
+	var ttfb, total sql.NullFloat64
+
+	err := s.db.QueryRowContext(ctx, query, url).Scan(&count, &ttfb, &total)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"url":          url,
+		"test_count":   count,
+		"avg_ttfb_ms":  ttfb.Float64,
+		"avg_total_ms": total.Float64,
+	}, nil
+}
+
 func (s *sqliteStore) DeleteJob(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx, "DELETE FROM jobs WHERE id = ?", id)
 	return err

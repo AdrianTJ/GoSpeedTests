@@ -43,12 +43,30 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/health", s.handleHealth)
 	mux.HandleFunc("GET /v1/ready", s.handleReady)
+	mux.HandleFunc("GET /v1/history", s.handleHistory)
 	mux.HandleFunc("POST /v1/jobs", s.handleCreateJob)
-	mux.HandleFunc("GET /v1/jobs", s.handleListJobs) // Exact match for listing
-	mux.HandleFunc("GET /v1/jobs/", s.handleGetJob)  // Prefix match for ID
+	mux.HandleFunc("GET /v1/jobs", s.handleListJobs)
+	mux.HandleFunc("GET /v1/jobs/", s.handleGetJob)
 	mux.HandleFunc("DELETE /v1/jobs/", s.handleDeleteJob)
 
 	return s.authMiddleware(mux)
+}
+
+func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
+	url := r.URL.Query().Get("url")
+	if url == "" {
+		http.Error(w, "missing url parameter", http.StatusBadRequest)
+		return
+	}
+
+	history, err := s.store.GetHistory(r.Context(), url)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(history)
 }
 
 func (s *Server) handleDeleteJob(w http.ResponseWriter, r *http.Request) {

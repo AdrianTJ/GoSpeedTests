@@ -3,18 +3,28 @@ package browser
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 )
 
+// WaterfallEntry represents a single resource request in the timeline.
+type WaterfallEntry struct {
+	URL       string  `json:"url"`
+	Type      string  `json:"type"`
+	Status    int     `json:"status"`
+	Size      int64   `json:"size_bytes"`
+	TotalMS   float64 `json:"total_ms"`
+}
+
 // Result represents the metrics collected from a headless browser.
 type Result struct {
-	DOMContentLoadedMS float64 `json:"dom_content_loaded_ms"`
-	PageLoadMS         float64 `json:"page_load_ms"`
-	ResourceCount      int     `json:"resource_count"`
-	// More metrics (ResourceBreakdown, Waterfall) can be added later.
+	DOMContentLoadedMS float64          `json:"dom_content_loaded_ms"`
+	PageLoadMS         float64          `json:"page_load_ms"`
+	ResourceCount      int              `json:"resource_count"`
+	Waterfall          []WaterfallEntry `json:"waterfall,omitempty"`
 }
 
 // Collect performs a full page load analysis using headless Chrome.
@@ -30,16 +40,24 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 	defer cancelTask()
 
 	var (
-		res            Result
-		resources      []*network.Request
-		startTime      = time.Now()
+		res       Result
+		startTime = time.Now()
+		waterfall []WaterfallEntry
+		mu        sync.Mutex
 	)
 
-	// Listen for network events to count resources
+	// Listen for network events to build waterfall
 	chromedp.ListenTarget(taskCtx, func(ev interface{}) {
 		switch ev := ev.(type) {
-		case *network.EventRequestWillBeSent:
-			resources = append(resources, ev.Request)
+		case *network.EventResponseReceived:
+			mu.Lock()
+			waterfall = append(waterfall, WaterfallEntry{
+				URL:    ev.Response.URL,
+				Type:   string(ev.Type),
+				Status: int(ev.Response.Status),
+				Size:   ev.Response.EncodedDataLength,
+			})
+			mu.Unlock()
 		}
 	})
 
@@ -65,7 +83,8 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 
 	res.DOMContentLoadedMS = timing["domContentLoaded"]
 	res.PageLoadMS = timing["loadEventEnd"]
-	res.ResourceCount = len(resources)
+	res.Waterfall = waterfall
+	res.ResourceCount = len(waterfall)
 
 	// In case performance API isn't fully ready (loadEventEnd is 0), 
 	// we fall back to our own timer as a sanity check.
