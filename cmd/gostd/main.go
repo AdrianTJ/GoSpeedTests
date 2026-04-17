@@ -4,7 +4,6 @@ import (
 	"flag"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/AdrianTJ/gospeedtest/internal/api"

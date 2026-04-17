@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/AdrianTJ/gospeedtest/internal/job"
+	"github.com/AdrianTJ/gospeedtest/internal/store"
 	"github.com/AdrianTJ/gospeedtest/internal/store/sqlite"
 )
 
