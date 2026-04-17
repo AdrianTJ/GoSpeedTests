@@ -55,7 +55,7 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 				URL:    ev.Response.URL,
 				Type:   string(ev.Type),
 				Status: int(ev.Response.Status),
-				Size:   ev.Response.EncodedDataLength,
+				Size:   int64(ev.Response.EncodedDataLength),
 			})
 			mu.Unlock()
 		}
