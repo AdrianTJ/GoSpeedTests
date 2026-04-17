@@ -209,6 +209,11 @@ func (s *sqliteStore) GetResultsByJobID(ctx context.Context, jobID string) ([]st
 	return results, nil
 }
 
+func (s *sqliteStore) DeleteJob(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM jobs WHERE id = ?", id)
+	return err
+}
+
 func (s *sqliteStore) Close() error {
 	return s.db.Close()
 }

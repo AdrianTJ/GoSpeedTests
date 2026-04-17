@@ -205,6 +205,11 @@ func (s *pgStore) GetResultsByJobID(ctx context.Context, jobID string) ([]store.
 	return results, nil
 }
 
+func (s *pgStore) DeleteJob(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM jobs WHERE id = $1", id)
+	return err
+}
+
 func (s *pgStore) Close() error {
 	return s.db.Close()
 }

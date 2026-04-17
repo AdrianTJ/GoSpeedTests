@@ -17,12 +17,14 @@ import (
 
 // Manager handles job orchestration and the worker pool.
 type Manager struct {
-	store      store.Store
-	jobQueue   chan *store.Job
-	workerCount int
-	wg         sync.WaitGroup
-	ctx        context.Context
-	cancel     context.CancelFunc
+	store        store.Store
+	jobQueue     chan *store.Job
+	workerCount  int
+	wg           sync.WaitGroup
+	ctx          context.Context
+	cancel       context.CancelFunc
+	mu           sync.Mutex
+	pendingJobs  map[string]struct{}
 }
 
 // NewManager creates a new job manager.
@@ -34,6 +36,7 @@ func NewManager(s store.Store, workerCount int, queueDepth int) *Manager {
 		workerCount: workerCount,
 		ctx:         ctx,
 		cancel:      cancel,
+		pendingJobs: make(map[string]struct{}),
 	}
 }
 
@@ -69,12 +72,33 @@ func (m *Manager) Submit(ctx context.Context, url string, tiers []string, runs i
 		return nil, fmt.Errorf("failed to create job in store: %w", err)
 	}
 
+	m.mu.Lock()
+	m.pendingJobs[job.ID] = struct{}{}
+	m.mu.Unlock()
+
 	select {
 	case m.jobQueue <- job:
 		return job, nil
 	default:
+		m.mu.Lock()
+		delete(m.pendingJobs, job.ID)
+		m.mu.Unlock()
 		return nil, fmt.Errorf("job queue is full")
 	}
+}
+
+// CancelJob attempts to cancel a pending job.
+func (m *Manager) CancelJob(ctx context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, ok := m.pendingJobs[id]; !ok {
+		// Job is already running or finished
+		return fmt.Errorf("job cannot be cancelled (already running or finished)")
+	}
+
+	delete(m.pendingJobs, id)
+	return m.store.DeleteJob(ctx, id)
 }
 
 func (m *Manager) worker(id int) {
@@ -90,6 +114,18 @@ func (m *Manager) worker(id int) {
 			if !ok {
 				return
 			}
+
+			// Check if job was cancelled while in queue
+			m.mu.Lock()
+			_, pending := m.pendingJobs[job.ID]
+			delete(m.pendingJobs, job.ID)
+			m.mu.Unlock()
+
+			if !pending {
+				log.Printf("Worker skipping cancelled job %s", job.ID)
+				continue
+			}
+
 			m.processJob(job)
 		}
 	}

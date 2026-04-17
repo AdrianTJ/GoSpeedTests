@@ -57,6 +57,12 @@ type Store interface {
 	SaveResult(ctx context.Context, result *Result) error
 	GetResultsByJobID(ctx context.Context, jobID string) ([]Result, error)
 
+	// Analysis
+	GetHistory(ctx context.Context, url string) (interface{}, error)
+
+	// Deletion
+	DeleteJob(ctx context.Context, id string) error
+
 	// Maintenance
 	Close() error
 }

@@ -46,8 +46,24 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /v1/jobs", s.handleCreateJob)
 	mux.HandleFunc("GET /v1/jobs", s.handleListJobs) // Exact match for listing
 	mux.HandleFunc("GET /v1/jobs/", s.handleGetJob)  // Prefix match for ID
+	mux.HandleFunc("DELETE /v1/jobs/", s.handleDeleteJob)
 
 	return s.authMiddleware(mux)
+}
+
+func (s *Server) handleDeleteJob(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/v1/jobs/")
+	if id == "" {
+		http.Error(w, "missing job id", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.manager.CancelJob(r.Context(), id); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
