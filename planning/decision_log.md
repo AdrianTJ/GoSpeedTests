@@ -67,5 +67,14 @@ This document tracks the key architectural and design decisions made during the 
     - **Job Cancellation:** Add a `DELETE` endpoint and internal logic to prune pending jobs from the queue.
     - **Waterfall Support:** Enhance the `browser` collector to capture network-level events for every sub-resource.
 
+## 11. Resilience and Edge-Case Strategy
+**Decision:** Implement strict validation and timeout enforcement across all collection layers.
+- **Rationale:** Web measurement is inherently flaky. Our collectors must handle DNS failures, unreachable hosts, and slow-loading scripts gracefully without hanging the worker pool.
+- **Implementation:** Added dedicated test suites for context cancellation and network-level timeouts.
+
+## 12. Final v0.1 Milestone Reached
+**Decision:** Declare v1.0.0 (Technical Spec Parity) complete on April 17, 2026.
+- **Summary:** All three measurement tiers (Network, Browser, Vitals) are fully implemented, verified with tests, and served via a production-ready API and CLI.
+
 ---
-*Last Updated: April 15, 2026*
+*Last Updated: April 17, 2026*
