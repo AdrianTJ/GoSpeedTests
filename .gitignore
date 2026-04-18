@@ -1,0 +1,49 @@
+# macOS System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Apple/GUI Folders
+__MACOSX
+AppleDouble
+LSOverride
+Network Trash Folder
+Temporary Items
+VolumeIcon.icns
+com.apple.timemachine.donotpresent
+
+# IDE Specific (optional, but recommended)
+.idea/
+*.swp
+.vscode/
+
+# Go Binaries and build artifacts
+gost
+gostd
+*.test
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+
+# Go dependencies
+vendor/
+
+# Go coverage and profiling
+*.out
+*.prof
+
+# Project Databases (SQLite)
+*.db
+*.db-shm
+*.db-wal
+
+# Environment files
+.env
+config.yaml

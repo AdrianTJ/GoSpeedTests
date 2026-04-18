@@ -40,6 +40,7 @@
 - [x] Robust Edge-Case Testing (Timeouts, Queue limits, Invalid inputs)
 
 ### In Progress
+- [ ] Interactive API Documentation (Swagger UI)
 - [ ] Final project documentation and cleanup
 
 ### Pending
@@ -50,7 +51,12 @@
 
 ## 3. Next Steps
 
-1. **Deployment & Verification**
+1. **API Documentation (OpenAPI / Swagger)**
+   - **Plan:** Author a formal `docs/openapi.yaml` and serve it via the API.
+   - **Act:** Add `/docs` and `/openapi.yaml` routes to `gostd`.
+   - **Validate:** Verify that visiting `http://localhost:8080/docs` displays the interactive portal.
+
+2. **Deployment & Verification**
    - Perform a full build and container launch to verify production environment variables.
    - Document environment variable requirements for end-users.
 

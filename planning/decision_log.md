@@ -76,5 +76,12 @@ This document tracks the key architectural and design decisions made during the 
 **Decision:** Declare v1.0.0 (Technical Spec Parity) complete on April 17, 2026.
 - **Summary:** All three measurement tiers (Network, Browser, Vitals) are fully implemented, verified with tests, and served via a production-ready API and CLI.
 
+## 13. API Documentation: Interactive Swagger UI
+**Decision:** Adopt OpenAPI 3.0 and Swagger UI for API documentation.
+- **Rationale:** An interactive documentation portal allows developers to explore and test endpoints directly from the browser, significantly lowering the barrier for integration.
+- **Implementation:**
+    - **OpenAPI Spec:** Centralized `docs/openapi.yaml`.
+    - **UI Delivery:** Served via a lightweight HTML wrapper at `/docs` using a CDN-hosted Swagger UI to minimize binary size.
+
 ---
 *Last Updated: April 17, 2026*

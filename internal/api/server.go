@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -49,7 +50,41 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/jobs/", s.handleGetJob)
 	mux.HandleFunc("DELETE /v1/jobs/", s.handleDeleteJob)
 
+	// Documentation
+	mux.HandleFunc("GET /openapi.yaml", s.handleOpenAPI)
+	mux.HandleFunc("GET /docs", s.handleDocs)
+
 	return s.authMiddleware(mux)
+}
+
+func (s *Server) handleOpenAPI(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "docs/openapi.yaml")
+}
+
+func (s *Server) handleDocs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>GoSpeedTest API Docs</title>
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+</head>
+<body>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script>
+        window.onload = () => {
+            window.ui = SwaggerUIBundle({
+                url: '/openapi.yaml',
+                dom_id: '#swagger-ui',
+            });
+        };
+    </script>
+</body>
+</html>
+	`)
 }
 
 func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {

@@ -1,0 +1,180 @@
+openapi: 3.0.0
+info:
+  title: GoSpeedTest API
+  description: High-performance page speed analysis engine written in Go.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    Job:
+      type: object
+      properties:
+        job_id:
+          type: string
+        url:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, RUNNING, COMPLETED, FAILED, TIMEOUT]
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        error:
+          type: string
+          nullable: true
+
+    CreateJobRequest:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          example: https://example.com
+        tiers:
+          type: array
+          items:
+            type: string
+            enum: [network, browser, vitals]
+        runs:
+          type: integer
+          default: 1
+        timeout_s:
+          type: integer
+          default: 60
+        webhook_url:
+          type: string
+
+    Result:
+      type: object
+      properties:
+        run_index:
+          type: integer
+        network:
+          type: object
+        browser:
+          type: object
+        vitals:
+          type: object
+        collected_at:
+          type: string
+          format: date-time
+
+paths:
+  /v1/health:
+    get:
+      summary: Liveness check
+      responses:
+        '200':
+          description: Server is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+
+  /v1/ready:
+    get:
+      summary: Readiness check
+      responses:
+        '200':
+          description: Server is ready to process jobs
+        '503':
+          description: Database or worker pool not ready
+
+  /v1/jobs:
+    post:
+      summary: Submit a new test job
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateJobRequest'
+      responses:
+        '202':
+          description: Job accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id: { type: string }
+                  status: { type: string }
+                  poll_url: { type: string }
+        '401':
+          description: Unauthorized
+
+    get:
+      summary: List recent jobs
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: A list of jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Job'
+
+  /v1/jobs/{id}:
+    get:
+      summary: Get job status and results
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Job details and result payload
+        '404':
+          description: Job not found
+
+    delete:
+      summary: Cancel a pending job
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Job cancelled and deleted
+        '409':
+          description: Job cannot be cancelled (already running/finished)
+
+  /v1/history:
+    get:
+      summary: Get performance aggregations for a URL
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Historical averages
