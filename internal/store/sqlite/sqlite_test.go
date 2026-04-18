@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
@@ -110,5 +111,81 @@ func TestSQLiteStore(t *testing.T) {
 	}
 	if len(jobs) != 1 {
 		t.Errorf("expected 1 job in list, got %d", len(jobs))
+	}
+}
+
+func TestSQLiteMigration(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "gospeedtest-sqlite-migration")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	dbPath := filepath.Join(tmpDir, "migration.db")
+
+	// Create a database with the old schema (no webhook_url)
+	importSqlite := func() {
+		s, err := NewStore(dbPath) // This will create it with webhook_url now...
+		// So we actually need to manually create an old version
+		if err != nil {
+			t.Fatalf("failed to create store: %v", err)
+		}
+		s.Close()
+	}
+
+	_ = importSqlite // not useful if NewStore is already fixed
+
+	// Let's do it manually
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`
+		CREATE TABLE jobs (
+			id           TEXT        PRIMARY KEY,
+			url          TEXT        NOT NULL,
+			status       TEXT        NOT NULL DEFAULT 'PENDING',
+			tiers        TEXT        NOT NULL,
+			runs         INTEGER     NOT NULL DEFAULT 1,
+			timeout_s    INTEGER     NOT NULL DEFAULT 60,
+			tags         TEXT,
+			error        TEXT,
+			created_at   DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			started_at   DATETIME,
+			completed_at DATETIME
+		);
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	// Now open it with NewStore and see if it migrates
+	s, err := NewStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to open store for migration: %v", err)
+	}
+	defer s.Close()
+
+	// Try to create a job with a webhook_url
+	ctx := context.Background()
+	job := &store.Job{
+		ID:         "mig_1",
+		URL:        "https://example.com",
+		Status:     store.StatusPending,
+		Tiers:      []string{"network"},
+		WebhookURL: "http://webhook.internal",
+	}
+
+	if err := s.CreateJob(ctx, job); err != nil {
+		t.Fatalf("failed to create job after migration: %v", err)
+	}
+
+	retrieved, err := s.GetJob(ctx, "mig_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retrieved.WebhookURL != "http://webhook.internal" {
+		t.Errorf("expected webhook_url to be saved, got %s", retrieved.WebhookURL)
 	}
 }

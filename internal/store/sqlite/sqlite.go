@@ -62,7 +62,18 @@ func (s *sqliteStore) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_jobs_url_status ON jobs(url, status);
 	`
 	_, err := s.db.Exec(schema)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Migration: Add webhook_url column if it doesn't exist
+	var columnExists bool
+	err = s.db.QueryRow("SELECT count(*) FROM pragma_table_info('jobs') WHERE name='webhook_url'").Scan(&columnExists)
+	if err == nil && !columnExists {
+		_, _ = s.db.Exec("ALTER TABLE jobs ADD COLUMN webhook_url TEXT")
+	}
+
+	return nil
 }
 
 func (s *sqliteStore) CreateJob(ctx context.Context, job *store.Job) error {
