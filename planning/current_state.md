@@ -1,7 +1,7 @@
 # Project Status: GoSpeedTest
 
-**Current Date:** April 15, 2026
-**Version:** v0.1-dev
+**Current Date:** April 17, 2026
+**Version:** v1.0.0 (v0.1 Parity Reached)
 
 ---
 
@@ -14,6 +14,7 @@
 | **First Module** | Network Collector | Foundational, minimal dependencies, and provides immediate value with core network metrics. |
 | **Agent Roles** | Defined 4 Specialized Roles | Collector, Backend/API, Data, and Tooling specialists to guide development and reviews. |
 | **Strategy** | Production Readiness | Prioritized Postgres, Auth, Docker, and Webhooks to ensure a deployable v0.1. |
+| **Reliability** | Edge-Case Testing | Implemented dedicated tests for timeouts, unreachable hosts, full queues, and invalid inputs. |
 
 ---
 
@@ -24,48 +25,35 @@
 - [x] Agent Role Definitions (`agents.md`)
 - [x] Project Roadmap & Strategy defined
 - [x] Initializing Go Module and project skeleton
-- [x] Network Collector (`internal/collector/network`) TDD cycle
+- [x] Network Collector (`internal/collector/network`) with full trace metrics
 - [x] Basic CLI (`cmd/gost`) for live testing
-- [x] Database Store (`internal/store`) abstraction with SQLite implementation
-- [x] Job State Machine (`internal/job`) with worker pool
-- [x] API Server (`cmd/gostd`) with basic POST/GET endpoints
-- [x] Browser Collector (`internal/collector/browser`) using chromedp
-- [x] Core Web Vitals Collector (`internal/collector/vitals`) using PerformanceObserver
-- [x] Refined CLI (`cmd/gost`) with full flag support, multi-run, and reporting (JSON/CSV/Text)
-- [x] Postgres Support (`internal/store/postgres`) implementation
+- [x] Database Store (`internal/store`) abstraction with SQLite & Postgres implementations
+- [x] Job State Machine (`internal/job`) with worker pool and cancellation logic
+- [x] API Server (`cmd/gostd`) with full REST suite (Jobs, History, Health, Ready)
+- [x] Browser Collector (`internal/collector/browser`) with Waterfall support
+- [x] Core Web Vitals Collector (`internal/collector/vitals`) with approximate INP
+- [x] Refined CLI (`cmd/gost`) with JSON/CSV/Text reporting and persistence
 - [x] Authentication / API keys for `gostd` (Security)
 - [x] Docker / Container Packaging (Portability)
 - [x] Webhook callbacks (Automation)
+- [x] Centralized Configuration (`internal/config`) with hierarchical loading
+- [x] Robust Edge-Case Testing (Timeouts, Queue limits, Invalid inputs)
 
 ### In Progress
-- [ ] Alignment with v0.1 Technical Specification (Gap Analysis)
+- [ ] Final project documentation and cleanup
 
-### Pending (v0.1 Parity)
-- [ ] **API Endpoints:** `GET /v1/history` (Aggregations), `DELETE /v1/jobs/{id}` (Cancellation), `/v1/health` & `/v1/ready`.
-- [ ] **Metrics:** Waterfall entries and Resource Breakdown in `browser` collector.
-- [ ] **Configuration:** Centralized `config/` package with YAML + Env + Flag priority.
-- [ ] **Store:** Search/filtering support in `ListJobs` and `history`.
+### Pending
+- [ ] Lighthouse integration (Deferred to v1.1)
+- [ ] Distributed workers (Deferred to v1.2)
 
 ---
 
-## 3. Next Steps (To Reach v0.1 Parity)
+## 3. Next Steps
 
-1. **Step 13: Centralized Configuration (`internal/config`)**
-   - **Plan:** Implement a unified config loader that respects the specified priority.
-   - **Act:** Add YAML parsing and merge it with environment variables and flags.
-   - **Validate:** Ensure `gostd` and `gost` can load settings from `config.yaml`.
+1. **Deployment & Verification**
+   - Perform a full build and container launch to verify production environment variables.
+   - Document environment variable requirements for end-users.
 
-2. **Step 14: API Completion & Health Checks**
-   - **Plan:** Add the missing REST endpoints and cancellation logic.
-   - **Act:** Implement `/v1/health`, `/v1/ready`, and `DELETE /v1/jobs/{id}`.
-   - **Validate:** Verify endpoints return correct status codes and liveness/readiness signals.
-
-3. **Step 15: History & Aggregations (`/v1/history`)**
-   - **Plan:** Add SQL queries for historical trends and averages.
-   - **Act:** Implement the `GET /v1/history` endpoint with URL-based filtering.
-   - **Validate:** Verify the API returns correct averages and counts.
-
-4. **Step 16: Enhanced Browser Metrics (Waterfall)**
-   - **Plan:** Capture detailed resource-level timings in `internal/collector/browser`.
-   - **Act:** Expand the `chromedp` listener to build the waterfall entries list.
-   - **Validate:** Ensure JSON output includes the full resource list.
+2. **Maintenance**
+   - Monitor for ChromeDP version updates or CDP protocol changes.
+   - Refine INP approximation based on user feedback.
