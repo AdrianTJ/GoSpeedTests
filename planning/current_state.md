@@ -1,6 +1,6 @@
 # Project Status: GoSpeedTest
 
-**Current Date:** April 17, 2026
+**Current Date:** April 20, 2026
 **Version:** v1.0.0 (v0.1 Parity Reached)
 
 ---
@@ -15,6 +15,7 @@
 | **Agent Roles** | Defined 4 Specialized Roles | Collector, Backend/API, Data, and Tooling specialists to guide development and reviews. |
 | **Strategy** | Production Readiness | Prioritized Postgres, Auth, Docker, and Webhooks to ensure a deployable v0.1. |
 | **Reliability** | Edge-Case Testing | Implemented dedicated tests for timeouts, unreachable hosts, full queues, and invalid inputs. |
+| **Security Audit** | Internal Audit Conducted | Identified 10 key findings across security, performance, and resilience that must be addressed before production. |
 
 ---
 
@@ -38,9 +39,10 @@
 - [x] Webhook callbacks (Automation)
 - [x] Centralized Configuration (`internal/config`) with hierarchical loading
 - [x] Robust Edge-Case Testing (Timeouts, Queue limits, Invalid inputs)
+- [x] Interactive API Documentation (Swagger UI) at `/docs`
 
 ### In Progress
-- [ ] Interactive API Documentation (Swagger UI)
+- [ ] Implementing Production-Readiness Audit Fixes
 - [ ] Final project documentation and cleanup
 
 ### Pending
@@ -49,17 +51,23 @@
 
 ---
 
-## 3. Next Steps
+## 3. Next Steps (Immediate Priorities)
 
-1. **API Documentation (OpenAPI / Swagger)**
-   - **Plan:** Author a formal `docs/openapi.yaml` and serve it via the API.
-   - **Act:** Add `/docs` and `/openapi.yaml` routes to `gostd`.
-   - **Validate:** Verify that visiting `http://localhost:8080/docs` displays the interactive portal.
+1. **Security: SSRF Prevention**
+   - **Plan:** Implement strict URL validation in `internal/api/server.go`.
+   - **Action:** Block non-HTTP/S schemes and private IP ranges.
 
-2. **Deployment & Verification**
-   - Perform a full build and container launch to verify production environment variables.
-   - Document environment variable requirements for end-users.
+2. **Resilience: Worker Panic Recovery**
+   - **Plan:** Add `recover()` to the job worker loop in `internal/job/manager.go`.
+   - **Action:** Ensure a single failing run doesn't take down the entire worker.
 
-2. **Maintenance**
-   - Monitor for ChromeDP version updates or CDP protocol changes.
-   - Refine INP approximation based on user feedback.
+3. **Performance: Browser Context Pooling**
+   - **Plan:** Refactor `internal/collector/browser` to reuse Chrome instances.
+   - **Action:** Reduce CPU/Memory overhead by avoiding frequent process spawning.
+
+4. **Reliability: Failure Reporting & Webhook Retries**
+   - **Plan:** Improve job status logic and add retry logic for webhooks.
+   - **Action:** Correctly handle partial successes and transient webhook failures.
+
+5. **Ops: Schema Migrations**
+   - **Plan:** Integrate `golang-migrate` or similar for database versioning.
