@@ -69,6 +69,27 @@ DELETE FROM jobs;
 
 ---
 
+## 6. Performance Optimization (Planned)
+
+The current queries use `json_extract` on every row, which will degrade performance as the `results` table grows. As part of the production-readiness roadmap, we will be implementing indices on key metrics.
+
+### Suggested Index (SQLite 3.31+)
+Create a generated column and index it for fast aggregations on TTFB.
+
+```sql
+ALTER TABLE results ADD COLUMN ttfb_ms REAL AS (json_extract(network, '$.ttfb_ms'));
+CREATE INDEX idx_results_ttfb ON results(ttfb_ms);
+```
+
+### Suggested Index (Postgres)
+For the Postgres implementation, we will use JSONB indices.
+
+```sql
+CREATE INDEX idx_results_network_ttfb ON results USING GIN ((network -> 'ttfb_ms'));
+```
+
+---
+
 ## Pro Tips for the SQLite CLI
 
 To use these queries from your terminal with formatted output:

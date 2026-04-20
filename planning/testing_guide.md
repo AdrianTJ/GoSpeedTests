@@ -154,7 +154,35 @@ docker run -p 8080:8080 \
 
 ---
 
-## 6. Automated Test Suite
+## 7. Security Verification
+
+### 7.1 SSRF Protection
+Attempt to submit internal or invalid URLs to verify they are blocked:
+
+```bash
+# Test local loopback (Should be blocked with 400 Bad Request)
+curl -i -X POST http://localhost:8080/v1/jobs -d '{"url": "http://localhost"}'
+
+# Test private IP (Should be blocked)
+curl -i -X POST http://localhost:8080/v1/jobs -d '{"url": "http://192.168.1.1"}'
+
+# Test invalid scheme (Should be blocked)
+curl -i -X POST http://localhost:8080/v1/jobs -d '{"url": "file:///etc/passwd"}'
+```
+
+### 7.2 Fail-Secure Authentication
+Verify that the server blocks all requests if an API key is configured but not provided:
+
+```bash
+# 1. Start server with GOST_API_KEY
+# 2. Try accessing sensitive routes without X-API-Key header
+curl -i http://localhost:8080/v1/jobs
+# Expected: 401 Unauthorized
+```
+
+---
+
+## 8. Automated Test Suite
 To run the full suite of internal logic and edge-case tests:
 ```bash
 go test ./... -v

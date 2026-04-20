@@ -353,7 +353,23 @@ Configuration is read in the following priority order (highest first): CLI flags
 
 ---
 
-## 8. Dependencies
+## 8. Security & Operations
+
+GoSpeedTest is designed with production environments in mind. The following security and operational constraints are enforced:
+
+### 8.1 SSRF Prevention
+To prevent Server-Side Request Forgery, all URLs submitted for analysis are validated before processing:
+- Only `http` and `https` schemes are permitted.
+- Internal, private, and loopback IP ranges (e.g., `127.0.0.1`, `10.0.0.0/8`, `169.254.169.254`) are blocked by default.
+
+### 8.2 Browser Management
+Headless Chrome instances are managed to ensure host stability:
+- **Process Reuse:** Instead of spawning a new process for every run, GoSpeedTest maintains a pool of browser contexts or a long-lived shared instance.
+- **Resource Limits:** The worker pool (`GOST_WORKER_COUNT`) limits the number of concurrent browser tabs to prevent CPU/memory exhaustion.
+
+---
+
+## 9. Dependencies
 
 GoSpeedTest minimises external Go module dependencies in line with its design principles. The following third-party packages are approved for use:
 
@@ -370,17 +386,16 @@ All other functionality (HTTP routing, logging, concurrency, JSON encoding) uses
 
 ---
 
-## 9. Open Questions & Future Work
+## 10. Open Questions & Future Work
 
 The following items are deferred for later design decisions:
 
-- **Authentication / API keys** — the v0 server is unauthenticated; a token-based auth layer should be added before any public deployment
-- **Webhook callbacks** — complement the poll model with an optional POST-on-completion webhook per job
-- **INP accuracy** — evaluate whether synthetic interaction injection produces reliable INP approximations vs. real-user data
+- **Database Migrations** — transition from `initSchema` to a formal migration tool (`golang-migrate` or `goose`) for safe schema evolution
+- **Structured Logging** — migrate from `log.Printf` to `slog` or `zap` for production-grade JSON logging
 - **Lighthouse integration** — optionally delegate Core Web Vitals measurement to Google Lighthouse CLI for higher-fidelity results
 - **Distributed workers** — support remote worker nodes communicating with a central `gostd` coordinator for geographically distributed testing
 - **Rate limiting and throttling** — protect target servers from inadvertent DoS; configurable delays between runs
-- **Docker / container packaging** — provide an official Docker image with Chrome pre-installed
+- **INP accuracy** — evaluate whether synthetic interaction injection produces reliable INP approximations vs. real-user data
 
 ---
 

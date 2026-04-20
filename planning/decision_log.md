@@ -83,5 +83,14 @@ This document tracks the key architectural and design decisions made during the 
     - **OpenAPI Spec:** Centralized `docs/openapi.yaml`.
     - **UI Delivery:** Served via a lightweight HTML wrapper at `/docs` using a CDN-hosted Swagger UI to minimize binary size.
 
+## 14. Prioritizing Production-Readiness Audit Findings
+**Decision:** Immediate prioritization of security, performance, and resilience gaps identified in the April 17, 2026 audit.
+- **Rationale:** While the project has reached functional parity, several "hidden" risks (SSRF, Browser process leaks, Worker crashes) could compromise stability in a real-world production environment. Addressing these now ensures a solid foundation before adding new features like Lighthouse.
+- **Priority Fixes:**
+    - SSRF Prevention (URL Validation)
+    - Browser Context Pooling (Performance)
+    - Worker Panic Recovery (Resilience)
+    - Webhook Retries (Reliability)
+
 ---
-*Last Updated: April 17, 2026*
+*Last Updated: April 20, 2026*
