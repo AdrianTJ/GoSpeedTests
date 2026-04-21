@@ -14,9 +14,9 @@ import (
 	"github.com/AdrianTJ/gospeedtest/internal/report"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
 	"github.com/AdrianTJ/gospeedtest/internal/store/sqlite"
+	"github.com/AdrianTJ/gospeedtest/internal/validator"
 	"github.com/google/uuid"
-)
-
+	)
 func main() {
 	urlPtr := flag.String("u", "", "URL to test (required)")
 	tierPtr := flag.String("t", "all", "Tier to run: network, browser, vitals, all")

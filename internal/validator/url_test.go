@@ -1,4 +1,4 @@
-package api
+package validator
 
 import (
 	"testing"
@@ -25,9 +25,9 @@ func TestValidateURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.url, func(t *testing.T) {
-			err := validateURL(tt.url)
+			err := ValidateURL(tt.url)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("validateURL(%q) error = %v, wantErr %v", tt.url, err, tt.wantErr)
+				t.Errorf("ValidateURL(%q) error = %v, wantErr %v", tt.url, err, tt.wantErr)
 			}
 		})
 	}

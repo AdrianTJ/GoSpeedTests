@@ -22,8 +22,8 @@ com.apple.timemachine.donotpresent
 .vscode/
 
 # Go Binaries and build artifacts
-gost
-gostd
+/gost
+/gostd
 *.test
 *.exe
 *.exe~

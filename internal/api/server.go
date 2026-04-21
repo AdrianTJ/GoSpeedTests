@@ -8,6 +8,7 @@ import (
 
 	"github.com/AdrianTJ/gospeedtest/internal/job"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
+	"github.com/AdrianTJ/gospeedtest/internal/validator"
 )
 
 type Server struct {
@@ -162,6 +163,11 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 
 	if req.URL == "" {
 		http.Error(w, "url is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := validator.ValidateURL(req.URL); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
