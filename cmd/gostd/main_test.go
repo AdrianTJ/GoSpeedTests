@@ -19,8 +19,7 @@ func TestGostdStartup(t *testing.T) {
 	}()
 
 	// Give it some time to start
-	time.Sleep(200 * time.Millisecond)
-
+	time.Sleep(2 * time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
