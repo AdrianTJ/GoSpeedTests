@@ -132,7 +132,17 @@ func (m *Manager) worker(id int) {
 				continue
 			}
 
-			m.processJob(job)
+			// Wrap in anonymous function for panic recovery per-job
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("Worker %d panicked while processing job %s: %v", id, job.ID, r)
+						errStr := fmt.Sprintf("internal worker panic: %v", r)
+						m.store.UpdateJobStatus(m.ctx, job.ID, store.StatusFailed, &errStr)
+					}
+				}()
+				m.processJob(job)
+			}()
 		}
 	}
 }
