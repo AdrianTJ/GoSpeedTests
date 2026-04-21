@@ -27,11 +27,15 @@ func main() {
 	flag.Parse()
 
 	if *urlPtr == "" {
-		fmt.Println("Usage: gost -u <url> [options]")
-		flag.PrintDefaults()
-		os.Exit(1)
+	        fmt.Println("Usage: gost -u <url> [options]")
+	        flag.PrintDefaults()
+	        os.Exit(1)
 	}
 
+	if err := validator.ValidateURL(*urlPtr); err != nil {
+	        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	        os.Exit(1)
+	}
 	var s store.Store
 	if *dbPtr != "" {
 		var err error

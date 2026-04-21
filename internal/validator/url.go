@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"strings"
 )
 
@@ -36,9 +37,11 @@ func ValidateURL(targetURL string) error {
 		}
 	}
 
+	allowPrivate := os.Getenv("GOST_ALLOW_PRIVATE_IPS") == "true"
+
 	for _, ip := range ips {
-		if isPrivateIP(ip) {
-			return fmt.Errorf("URL points to a private or restricted IP address: %s", ip.String())
+		if !allowPrivate && isPrivateIP(ip) {
+			return fmt.Errorf("URL points to a private or restricted IP address: %s (set GOST_ALLOW_PRIVATE_IPS=true to allow this if intentional)", ip.String())
 		}
 	}
 

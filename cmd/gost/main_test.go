@@ -1,13 +1,13 @@
 package main
 
 import (
-	"net/http"
-	"net/http/httptest"
-	"os/exec"
-	"strings"
-	"testing"
+        "net/http"
+        "net/http/httptest"
+        "os"
+        "os/exec"
+        "strings"
+        "testing"
 )
-
 func TestGostCLI(t *testing.T) {
 	// Setup test server
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -19,7 +19,7 @@ func TestGostCLI(t *testing.T) {
 	// Build the CLI binary (temporary)
 	cmd := exec.Command("/opt/homebrew/bin/go", "run", "main.go", "-u", ts.URL, "-f", "json")
 	cmd.Dir = "." // Current directory cmd/gost
-
+	cmd.Env = append(os.Environ(), "GOST_ALLOW_PRIVATE_IPS=true")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("CLI execution failed: %v\nOutput: %s", err, string(output))
