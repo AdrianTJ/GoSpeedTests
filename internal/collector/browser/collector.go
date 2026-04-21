@@ -29,14 +29,8 @@ type Result struct {
 
 // Collect performs a full page load analysis using headless Chrome.
 func Collect(ctx context.Context, url string) (*Result, error) {
-	// Allocate a new context for Chrome
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.NoSandbox, // Often required in headless/Docker environments
-	)
-	allocCtx, cancelAlloc := chromedp.NewExecAllocator(ctx, opts...)
-	defer cancelAlloc()
-
-	taskCtx, cancelTask := chromedp.NewContext(allocCtx)
+	// Create a new tab context from the parent context
+	taskCtx, cancelTask := chromedp.NewContext(ctx)
 	defer cancelTask()
 
 	var (

@@ -11,7 +11,9 @@ import (
 	"github.com/AdrianTJ/gospeedtest/internal/collector/browser"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/vitals"
+	"github.com/AdrianTJ/gospeedtest/internal/chrome"
 	"github.com/AdrianTJ/gospeedtest/internal/report"
+
 	"github.com/AdrianTJ/gospeedtest/internal/store"
 	"github.com/AdrianTJ/gospeedtest/internal/store/sqlite"
 	"github.com/AdrianTJ/gospeedtest/internal/validator"
@@ -44,10 +46,12 @@ func main() {
 			log.Fatalf("Failed to initialize store: %v", err)
 		}
 		defer s.Close()
-	}
+		}
 
-	summaries := make([]report.Summary, 0, *runsPtr)
+		chromeMgr := chrome.NewManager()
+		defer chromeMgr.Close()
 
+		summaries := make([]report.Summary, 0, *runsPtr)
 	for i := 1; i <= *runsPtr; i++ {
 		if *runsPtr > 1 {
 			fmt.Fprintf(os.Stderr, "Run %d/%d...\n", i, *runsPtr)
@@ -59,19 +63,28 @@ func main() {
 		tier := *tierPtr
 
 		if tier == "all" || tier == "network" {
-			netRes, _ := network.Collect(ctx, *urlPtr)
-			res.Network = netRes
+		        netRes, _ := network.Collect(ctx, *urlPtr)
+		        res.Network = netRes
 		}
 		if tier == "all" || tier == "browser" {
-			browserRes, _ := browser.Collect(ctx, *urlPtr)
-			res.Browser = browserRes
+		        bCtx, bCancel := chromeMgr.NewContext(ctx)
+		        browserRes, err := browser.Collect(bCtx, *urlPtr)
+		        bCancel()
+		        if err != nil {
+		                log.Printf("Browser collection failed: %v", err)
+		        }
+		        res.Browser = browserRes
 		}
 		if tier == "all" || tier == "vitals" {
-			vitalsRes, _ := vitals.Collect(ctx, *urlPtr)
-			res.Vitals = vitalsRes
+		        vCtx, vCancel := chromeMgr.NewContext(ctx)
+		        vitalsRes, err := vitals.Collect(vCtx, *urlPtr)
+		        vCancel()
+		        if err != nil {
+		                log.Printf("Vitals collection failed: %v", err)
+		        }
+		        res.Vitals = vitalsRes
 		}
 		cancel()
-
 		summaries = append(summaries, res)
 
 		// Persist if store is available

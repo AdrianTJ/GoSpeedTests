@@ -22,9 +22,10 @@ This document contains the findings of a senior software engineering audit perfo
 
 ### 2.1 Security
 
-**[SEVERITY: Critical]**  
-**File:** `internal/api/server.go`  
-**Issue:** **Missing URL Validation (SSRF Risk).** The API accepts any string as a URL without validation. An attacker could submit `http://169.254.169.254` (cloud metadata) or `file:///etc/passwd` to perform Server-Side Request Forgery.  
+**[SEVERITY: Critical]** [STATUS: RESOLVED - 2026-04-20]  
+**File:** `internal/api/server.go`, `cmd/gost/main.go`, `internal/validator/url.go`  
+**Issue:** **Missing URL Validation (SSRF Risk).**  
+**Fix:** Implemented `validator.ValidateURL` which enforces `http/https` schemes and blocks private/loopback IP ranges. Added `GOST_ALLOW_PRIVATE_IPS` environment variable for legitimate internal testing.  
 **Recommendation:** Implement strict validation. Allow only `http` and `https` schemes and block internal/private IP ranges.
 
 **[SEVERITY: Medium]**  

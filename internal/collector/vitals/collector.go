@@ -18,13 +18,8 @@ type Result struct {
 
 // Collect extracts Core Web Vitals from the given URL using headless Chrome.
 func Collect(ctx context.Context, url string) (*Result, error) {
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.NoSandbox,
-	)
-	allocCtx, cancelAlloc := chromedp.NewExecAllocator(ctx, opts...)
-	defer cancelAlloc()
-
-	taskCtx, cancelTask := chromedp.NewContext(allocCtx)
+	// Create a new tab context from the parent context
+	taskCtx, cancelTask := chromedp.NewContext(ctx)
 	defer cancelTask()
 
 	var res Result

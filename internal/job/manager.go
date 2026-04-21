@@ -10,7 +10,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/AdrianTJ/gospeedtest/internal/chrome"
+	"github.com/AdrianTJ/gospeedtest/internal/collector/browser"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
+	"github.com/AdrianTJ/gospeedtest/internal/collector/vitals"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
 	"github.com/google/uuid"
 )
@@ -18,6 +21,7 @@ import (
 // Manager handles job orchestration and the worker pool.
 type Manager struct {
 	store        store.Store
+	chrome       *chrome.Manager
 	jobQueue     chan *store.Job
 	workerCount  int
 	wg           sync.WaitGroup
@@ -32,6 +36,7 @@ func NewManager(s store.Store, workerCount int, queueDepth int) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Manager{
 		store:       s,
+		chrome:      chrome.NewManager(),
 		jobQueue:    make(chan *store.Job, queueDepth),
 		workerCount: workerCount,
 		ctx:         ctx,
@@ -53,6 +58,7 @@ func (m *Manager) Stop() {
 	m.cancel()
 	close(m.jobQueue)
 	m.wg.Wait()
+	m.chrome.Close()
 }
 
 // Submit enqueues a new job for execution.
@@ -140,22 +146,61 @@ func (m *Manager) processJob(job *store.Job) {
 		return
 	}
 
-	// For now, we only have the network collector
-	// In a real implementation, we'd iterate over job.Runs and tiers
+	hasTier := func(name string) bool {
+		if len(job.Tiers) == 0 {
+			return name == "network" // Default to network only if none specified
+		}
+		for _, t := range job.Tiers {
+			if t == "all" || t == name {
+				return true
+			}
+		}
+		return false
+	}
+
 	var lastErr error
 	for i := 1; i <= job.Runs; i++ {
-		res, err := network.Collect(m.ctx, job.URL)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
 		resultRecord := &store.Result{
 			ID:          "res_" + uuid.New().String()[:8],
 			JobID:       job.ID,
 			RunIndex:    i,
-			Network:     res,
 			CollectedAt: time.Now(),
+		}
+
+		// 1. Network Tier
+		if hasTier("network") {
+			netRes, err := network.Collect(m.ctx, job.URL)
+			if err != nil {
+				lastErr = err
+			} else {
+				resultRecord.Network = netRes
+			}
+		}
+
+		// 2. Browser Tier
+		if hasTier("browser") {
+			// Create a browser context for this run
+			bCtx, bCancel := m.chrome.NewContext(m.ctx)
+			browserRes, err := browser.Collect(bCtx, job.URL)
+			bCancel()
+			if err != nil {
+				lastErr = err
+			} else {
+				resultRecord.Browser = browserRes
+			}
+		}
+
+		// 3. Vitals Tier
+		if hasTier("vitals") {
+			// Create a browser context for this run
+			vCtx, vCancel := m.chrome.NewContext(m.ctx)
+			vitalsRes, err := vitals.Collect(vCtx, job.URL)
+			vCancel()
+			if err != nil {
+				lastErr = err
+			} else {
+				resultRecord.Vitals = vitalsRes
+			}
 		}
 
 		if err := m.store.SaveResult(m.ctx, resultRecord); err != nil {
