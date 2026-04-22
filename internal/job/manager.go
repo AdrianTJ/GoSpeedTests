@@ -168,6 +168,7 @@ func (m *Manager) processJob(job *store.Job) {
 		return false
 	}
 
+	successCount := 0
 	var lastErr error
 	for i := 1; i <= job.Runs; i++ {
 		resultRecord := &store.Result{
@@ -177,11 +178,14 @@ func (m *Manager) processJob(job *store.Job) {
 			CollectedAt: time.Now(),
 		}
 
+		runFailed := false
+
 		// 1. Network Tier
 		if hasTier("network") {
 			netRes, err := network.Collect(m.ctx, job.URL)
 			if err != nil {
 				lastErr = err
+				runFailed = true
 			} else {
 				resultRecord.Network = netRes
 			}
@@ -195,6 +199,7 @@ func (m *Manager) processJob(job *store.Job) {
 			bCancel()
 			if err != nil {
 				lastErr = err
+				runFailed = true
 			} else {
 				resultRecord.Browser = browserRes
 			}
@@ -208,9 +213,14 @@ func (m *Manager) processJob(job *store.Job) {
 			vCancel()
 			if err != nil {
 				lastErr = err
+				runFailed = true
 			} else {
 				resultRecord.Vitals = vitalsRes
 			}
+		}
+
+		if !runFailed {
+			successCount++
 		}
 
 		if err := m.store.SaveResult(m.ctx, resultRecord); err != nil {
@@ -220,9 +230,16 @@ func (m *Manager) processJob(job *store.Job) {
 
 	status := store.StatusCompleted
 	var errStr *string
-	if lastErr != nil {
+
+	if successCount == 0 && job.Runs > 0 {
 		status = store.StatusFailed
-		s := lastErr.Error()
+		if lastErr != nil {
+			s := lastErr.Error()
+			errStr = &s
+		}
+	} else if successCount < job.Runs {
+		status = store.StatusPartial
+		s := fmt.Sprintf("only %d/%d runs succeeded; last error: %v", successCount, job.Runs, lastErr)
 		errStr = &s
 	}
 
