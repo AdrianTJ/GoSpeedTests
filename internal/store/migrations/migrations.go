@@ -41,12 +41,7 @@ func Run(ctx context.Context, db *sql.DB, driver string, migrations []Migration)
 				return fmt.Errorf("failed to apply migration %d: %w", m.Version, err)
 			}
 
-			if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations (version) VALUES (?)`, m.Version); err != nil {
-				// Special case for Postgres if ? isn't supported, but we'll handle it below or use driver-specific logic
-				// Actually, we can just use driver-specific SQL for the insert too if needed.
-			}
-			
-			// Wait, let's make the insert driver-agnostic or handle it
+			// Choose placeholder based on driver
 			insertSQL := `INSERT INTO schema_migrations (version) VALUES (?)`
 			if driver == "postgres" {
 				insertSQL = `INSERT INTO schema_migrations (version) VALUES ($1)`
