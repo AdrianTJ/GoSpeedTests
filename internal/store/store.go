@@ -14,6 +14,7 @@ const (
 	StatusPending   JobStatus = "PENDING"
 	StatusRunning   JobStatus = "RUNNING"
 	StatusCompleted JobStatus = "COMPLETED"
+	StatusPartial   JobStatus = "PARTIAL"
 	StatusFailed    JobStatus = "FAILED"
 	StatusTimeout   JobStatus = "TIMEOUT"
 )
