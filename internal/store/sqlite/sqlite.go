@@ -9,6 +9,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
+	"github.com/AdrianTJ/gospeedtest/internal/store/migrations"
 )
 
 type sqliteStore struct {
@@ -32,48 +33,43 @@ func NewStore(dsn string) (store.Store, error) {
 }
 
 func (s *sqliteStore) initSchema() error {
-	const schema = `
-	CREATE TABLE IF NOT EXISTS jobs (
-		id           TEXT        PRIMARY KEY,
-		url          TEXT        NOT NULL,
-		status       TEXT        NOT NULL DEFAULT 'PENDING',
-		tiers        TEXT        NOT NULL,
-		runs         INTEGER     NOT NULL DEFAULT 1,
-		timeout_s    INTEGER     NOT NULL DEFAULT 60,
-		tags         TEXT,
-		webhook_url  TEXT,
-		error        TEXT,
-		created_at   DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-		started_at   DATETIME,
-		completed_at DATETIME
-	);
-
-	CREATE TABLE IF NOT EXISTS results (
-		id           TEXT        PRIMARY KEY,
-		job_id       TEXT        NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-		run_index    INTEGER     NOT NULL DEFAULT 1,
-		network      TEXT,
-		browser      TEXT,
-		vitals       TEXT,
-		collected_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_results_job_id  ON results(job_id);
-	CREATE INDEX IF NOT EXISTS idx_jobs_url_status ON jobs(url, status);
-	`
-	_, err := s.db.Exec(schema)
-	if err != nil {
-		return err
+	m := []migrations.Migration{
+		{
+			Version: 1,
+			SQL: `
+			CREATE TABLE IF NOT EXISTS jobs (
+				id           TEXT        PRIMARY KEY,
+				url          TEXT        NOT NULL,
+				status       TEXT        NOT NULL DEFAULT 'PENDING',
+				tiers        TEXT        NOT NULL,
+				runs         INTEGER     NOT NULL DEFAULT 1,
+				timeout_s    INTEGER     NOT NULL DEFAULT 60,
+				tags         TEXT,
+				error        TEXT,
+				created_at   DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				started_at   DATETIME,
+				completed_at DATETIME
+			);
+			CREATE TABLE IF NOT EXISTS results (
+				id           TEXT        PRIMARY KEY,
+				job_id       TEXT        NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+				run_index    INTEGER     NOT NULL DEFAULT 1,
+				network      TEXT,
+				browser      TEXT,
+				vitals       TEXT,
+				collected_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP
+			);
+			CREATE INDEX IF NOT EXISTS idx_results_job_id  ON results(job_id);
+			CREATE INDEX IF NOT EXISTS idx_jobs_url_status ON jobs(url, status);
+			`,
+		},
+		{
+			Version: 2,
+			SQL:     `ALTER TABLE jobs ADD COLUMN webhook_url TEXT`,
+		},
 	}
 
-	// Migration: Add webhook_url column if it doesn't exist
-	var columnExists bool
-	err = s.db.QueryRow("SELECT count(*) FROM pragma_table_info('jobs') WHERE name='webhook_url'").Scan(&columnExists)
-	if err == nil && !columnExists {
-		_, _ = s.db.Exec("ALTER TABLE jobs ADD COLUMN webhook_url TEXT")
-	}
-
-	return nil
+	return migrations.Run(context.Background(), s.db, "sqlite", m)
 }
 
 func (s *sqliteStore) CreateJob(ctx context.Context, job *store.Job) error {

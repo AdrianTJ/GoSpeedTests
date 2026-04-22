@@ -31,44 +31,52 @@ func NewStore(dsn string) (store.Store, error) {
 	s := &pgStore{db: db}
 	if err := s.initSchema(); err != nil {
 		db.Close()
-		return nil, err
-	}
+		"github.com/AdrianTJ/gospeedtest/internal/store"
+		"github.com/AdrianTJ/gospeedtest/internal/store/migrations"
+		)
 
-	return s, nil
-}
+		type pgStore struct {
+		...
+		func (s *pgStore) initSchema() error {
+		m := []migrations.Migration{
+			{
+				Version: 1,
+				SQL: `
+				CREATE TABLE IF NOT EXISTS jobs (
+					id           TEXT        PRIMARY KEY,
+					url          TEXT        NOT NULL,
+					status       TEXT        NOT NULL DEFAULT 'PENDING',
+					tiers        JSONB       NOT NULL,
+					runs         INTEGER     NOT NULL DEFAULT 1,
+					timeout_s    INTEGER     NOT NULL DEFAULT 60,
+					tags         JSONB,
+					error        TEXT,
+					created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+					started_at   TIMESTAMPTZ,
+					completed_at TIMESTAMPTZ
+				);
+				CREATE TABLE IF NOT EXISTS results (
+					id           TEXT        PRIMARY KEY,
+					job_id       TEXT        NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+					run_index    INTEGER     NOT NULL DEFAULT 1,
+					network      JSONB,
+					browser      JSONB,
+					vitals       JSONB,
+					collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+				);
+				CREATE INDEX IF NOT EXISTS idx_results_job_id  ON results(job_id);
+				CREATE INDEX IF NOT EXISTS idx_jobs_url_status ON jobs(url, status);
+				`,
+			},
+			{
+				Version: 2,
+				SQL:     `ALTER TABLE jobs ADD COLUMN webhook_url TEXT`,
+			},
+		}
 
-func (s *pgStore) initSchema() error {
-	const schema = `
-	CREATE TABLE IF NOT EXISTS jobs (
-		id           TEXT        PRIMARY KEY,
-		url          TEXT        NOT NULL,
-		status       TEXT        NOT NULL DEFAULT 'PENDING',
-		tiers        JSONB       NOT NULL,
-		runs         INTEGER     NOT NULL DEFAULT 1,
-		timeout_s    INTEGER     NOT NULL DEFAULT 60,
-		tags         JSONB,
-		webhook_url  TEXT,
-		error        TEXT,
-		created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		started_at   TIMESTAMPTZ,
-		completed_at TIMESTAMPTZ
-	);
+		return migrations.Run(context.Background(), s.db, "postgres", m)
+		}
 
-	CREATE TABLE IF NOT EXISTS results (
-		id           TEXT        PRIMARY KEY,
-		job_id       TEXT        NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-		run_index    INTEGER     NOT NULL DEFAULT 1,
-		network      JSONB,
-		browser      JSONB,
-		vitals       JSONB,
-		collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_results_job_id  ON results(job_id);
-	CREATE INDEX IF NOT EXISTS idx_jobs_url_status ON jobs(url, status);
-	`
-	_, err := s.db.Exec(schema)
-	return err
 }
 
 func (s *pgStore) CreateJob(ctx context.Context, job *store.Job) error {
