@@ -8,17 +8,16 @@ import (
 	"os"
 	"time"
 
+	"github.com/AdrianTJ/gospeedtest/internal/chrome"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/browser"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/vitals"
-	"github.com/AdrianTJ/gospeedtest/internal/chrome"
 	"github.com/AdrianTJ/gospeedtest/internal/report"
-
 	"github.com/AdrianTJ/gospeedtest/internal/store"
-	"github.com/AdrianTJ/gospeedtest/internal/store/sqlite"
 	"github.com/AdrianTJ/gospeedtest/internal/validator"
 	"github.com/google/uuid"
-	)
+)
+
 func main() {
 	urlPtr := flag.String("u", "", "URL to test (required)")
 	tierPtr := flag.String("t", "all", "Tier to run: network, browser, vitals, all")
@@ -29,60 +28,61 @@ func main() {
 	flag.Parse()
 
 	if *urlPtr == "" {
-	        fmt.Println("Usage: gost -u <url> [options]")
-	        flag.PrintDefaults()
-	        os.Exit(1)
+		fmt.Println("Usage: gost -u <url> [options]")
+		flag.PrintDefaults()
+		os.Exit(1)
 	}
 
 	if err := validator.ValidateURL(*urlPtr); err != nil {
-	        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-	        os.Exit(1)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
+
 	var s store.Store
 	if *dbPtr != "" {
 		var err error
-		s, err = sqlite.NewStore(*dbPtr)
+		s, err = store.NewStore(*dbPtr)
 		if err != nil {
 			log.Fatalf("Failed to initialize store: %v", err)
 		}
 		defer s.Close()
-		}
+	}
 
-		chromeMgr := chrome.NewManager()
-		defer chromeMgr.Close()
+	chromeMgr := chrome.NewManager()
+	defer chromeMgr.Close()
 
-		summaries := make([]report.Summary, 0, *runsPtr)
+	summaries := make([]report.Summary, 0, *runsPtr)
 	for i := 1; i <= *runsPtr; i++ {
 		if *runsPtr > 1 {
 			fmt.Fprintf(os.Stderr, "Run %d/%d...\n", i, *runsPtr)
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*timeoutPtr)*time.Second)
-		
+
 		res := report.Summary{URL: *urlPtr}
 		tier := *tierPtr
 
 		if tier == "all" || tier == "network" {
-		        netRes, _ := network.Collect(ctx, *urlPtr)
-		        res.Network = netRes
+			netRes, _ := network.Collect(ctx, *urlPtr)
+			res.Network = netRes
 		}
 		if tier == "all" || tier == "browser" {
-		        bCtx, bCancel := chromeMgr.NewContext(ctx)
-		        browserRes, err := browser.Collect(bCtx, *urlPtr)
-		        bCancel()
-		        if err != nil {
-		                log.Printf("Browser collection failed: %v", err)
-		        }
-		        res.Browser = browserRes
+			bCtx, bCancel := chromeMgr.NewContext(ctx)
+			browserRes, err := browser.Collect(bCtx, *urlPtr)
+			bCancel()
+			if err != nil {
+				log.Printf("Browser collection failed: %v", err)
+			}
+			res.Browser = browserRes
 		}
 		if tier == "all" || tier == "vitals" {
-		        vCtx, vCancel := chromeMgr.NewContext(ctx)
-		        vitalsRes, err := vitals.Collect(vCtx, *urlPtr)
-		        vCancel()
-		        if err != nil {
-		                log.Printf("Vitals collection failed: %v", err)
-		        }
-		        res.Vitals = vitalsRes
+			vCtx, vCancel := chromeMgr.NewContext(ctx)
+			vitalsRes, err := vitals.Collect(vCtx, *urlPtr)
+			vCancel()
+			if err != nil {
+				log.Printf("Vitals collection failed: %v", err)
+			}
+			res.Vitals = vitalsRes
 		}
 		cancel()
 		summaries = append(summaries, res)
@@ -90,7 +90,6 @@ func main() {
 		// Persist if store is available
 		if s != nil {
 			jobID := "cli_" + uuid.New().String()[:8]
-			// We create a dummy job for the CLI run
 			s.CreateJob(context.Background(), &store.Job{
 				ID: jobID, URL: *urlPtr, Status: store.StatusCompleted,
 				Tiers: []string{tier}, Runs: 1, CreatedAt: time.Now(),
