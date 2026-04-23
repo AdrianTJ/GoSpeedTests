@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/AdrianTJ/gospeedtest/internal/store"
-	"github.com/AdrianTJ/gospeedtest/internal/store/sqlite"
 )
 
 func TestJobManager(t *testing.T) {
@@ -18,7 +17,7 @@ func TestJobManager(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "job-manager-test")
 	defer os.RemoveAll(tmpDir)
 	dbPath := filepath.Join(tmpDir, "test.db")
-	s, _ := sqlite.NewStore(dbPath)
+	s, _ := store.NewStore(dbPath)
 	defer s.Close()
 
 	// Setup manager
@@ -91,11 +90,11 @@ func TestJobManager(t *testing.T) {
 func TestJobManager_QueueFull(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "job-full-test")
 	defer os.RemoveAll(tmpDir)
-	s, _ := sqlite.NewStore(filepath.Join(tmpDir, "test.db"))
-	
+	s, _ := store.NewStore(filepath.Join(tmpDir, "test.db"))
+
 	// Create manager with 0 workers so queue stays full
 	m := NewManager(s, 0, 1)
-	
+
 	ctx := context.Background()
 	_, err := m.Submit(ctx, "http://example.com", []string{"network"}, 1, "")
 	if err != nil {
@@ -111,7 +110,7 @@ func TestJobManager_QueueFull(t *testing.T) {
 func TestJobManager_CancelNonExistent(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "job-cancel-test")
 	defer os.RemoveAll(tmpDir)
-	s, _ := sqlite.NewStore(filepath.Join(tmpDir, "test.db"))
+	s, _ := store.NewStore(filepath.Join(tmpDir, "test.db"))
 	m := NewManager(s, 1, 1)
 
 	err := m.CancelJob(context.Background(), "non-existent")

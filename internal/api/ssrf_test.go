@@ -10,14 +10,14 @@ import (
 	"testing"
 
 	"github.com/AdrianTJ/gospeedtest/internal/job"
-	"github.com/AdrianTJ/gospeedtest/internal/store/sqlite"
+	"github.com/AdrianTJ/gospeedtest/internal/store"
 )
 
 func TestSSRFPrevention(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "ssrf-test")
 	defer os.RemoveAll(tmpDir)
 	dbPath := filepath.Join(tmpDir, "test.db")
-	s, _ := sqlite.NewStore(dbPath)
+	s, _ := store.NewStore(dbPath)
 	defer s.Close()
 
 	m := job.NewManager(s, 1, 10)
