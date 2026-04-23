@@ -1,7 +1,7 @@
 # GoSpeedTest
 
 **Technical Design Document**
-*v0.1 · April 2026 · Open Source / Go*
+*v1.0.0 · April 2026 · Open Source / Go*
 
 ---
 
@@ -355,17 +355,24 @@ Configuration is read in the following priority order (highest first): CLI flags
 
 ## 8. Security & Operations
 
-GoSpeedTest is designed with production environments in mind. The following security and operational constraints are enforced:
+GoSpeedTest is designed with production environments in mind. The following security and operational constraints are implemented:
 
 ### 8.1 SSRF Prevention
-To prevent Server-Side Request Forgery, all URLs submitted for analysis are validated before processing:
+To prevent Server-Side Request Forgery, all URLs submitted for analysis are validated before processing using the `internal/validator` package:
 - Only `http` and `https` schemes are permitted.
-- Internal, private, and loopback IP ranges (e.g., `127.0.0.1`, `10.0.0.0/8`, `169.254.169.254`) are blocked by default.
+- Internal, private, and loopback IP ranges (e.g., `127.0.0.1`, `10.0.0.0/8`, `169.254.169.254`) are blocked.
+- Users can bypass these checks for local testing by setting `GOST_ALLOW_PRIVATE_IPS=true`.
 
 ### 8.2 Browser Management
-Headless Chrome instances are managed to ensure host stability:
-- **Process Reuse:** Instead of spawning a new process for every run, GoSpeedTest maintains a pool of browser contexts or a long-lived shared instance.
+Headless Chrome instances are managed by `internal/chrome.Manager` to ensure host stability:
+- **Process Reuse:** Instead of spawning a new process for every run, GoSpeedTest maintains a single long-lived Chrome instance.
+- **Context Isolation:** Each test run is performed in an isolated browser context (tab) that is closed immediately upon completion.
 - **Resource Limits:** The worker pool (`GOST_WORKER_COUNT`) limits the number of concurrent browser tabs to prevent CPU/memory exhaustion.
+
+### 8.3 Persistence & Migrations
+Database consistency is maintained via a lightweight versioned migration runner:
+- **Schema Migrations:** Managed by `internal/store/migrations`.
+- **Integrity:** Migrations are performed transactionally on startup to ensure the schema matches the application version.
 
 ---
 

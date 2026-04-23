@@ -1,6 +1,6 @@
 # Project Status: GoSpeedTest
 
-**Current Date:** April 20, 2026
+**Current Date:** April 22, 2026
 **Version:** v1.0.0 (v0.1 Parity Reached)
 
 ---
@@ -15,7 +15,8 @@
 | **Agent Roles** | Defined 4 Specialized Roles | Collector, Backend/API, Data, and Tooling specialists to guide development and reviews. |
 | **Strategy** | Production Readiness | Prioritized Postgres, Auth, Docker, and Webhooks to ensure a deployable v0.1. |
 | **Reliability** | Edge-Case Testing | Implemented dedicated tests for timeouts, unreachable hosts, full queues, and invalid inputs. |
-| **Security Audit** | Internal Audit Conducted | Identified 10 key findings across security, performance, and resilience that must be addressed before production. |
+| **Security Audit** | Internal Audit Conducted | Identified 10 key findings across security, performance, and resilience. |
+| **Audit Remediation** | Top 5 Fixes Implemented | Addressed SSRF, Browser Reuse, Panic Recovery, Status Logic, and Migrations. |
 
 ---
 
@@ -40,10 +41,11 @@
 - [x] Centralized Configuration (`internal/config`) with hierarchical loading
 - [x] Robust Edge-Case Testing (Timeouts, Queue limits, Invalid inputs)
 - [x] Interactive API Documentation (Swagger UI) at `/docs`
+- [x] **Production-Readiness Audit Fixes (Security, Performance, Resilience, Ops)**
 
 ### In Progress
-- [ ] Implementing Production-Readiness Audit Fixes
 - [ ] Final project documentation and cleanup
+- [ ] Remaining Audit findings (Webhooks, Logging, etc.)
 
 ### Pending
 - [ ] Lighthouse integration (Deferred to v1.1)
@@ -51,23 +53,20 @@
 
 ---
 
-## 3. Next Steps (Immediate Priorities)
+## 3. Next Steps
 
-1. **Security: SSRF Prevention**
-   - **Plan:** Implement strict URL validation in `internal/api/server.go`.
-   - **Action:** Block non-HTTP/S schemes and private IP ranges.
+1. **Reliability: Webhook Retries**
+   - **Plan:** Implement a retry queue for failed webhook deliveries.
+   - **Action:** Add exponential backoff and persistence for pending webhooks.
 
-2. **Resilience: Worker Panic Recovery**
-   - **Plan:** Add `recover()` to the job worker loop in `internal/job/manager.go`.
-   - **Action:** Ensure a single failing run doesn't take down the entire worker.
+2. **Ops: Structured Logging**
+   - **Plan:** Replace standard `log` with `log/slog`.
+   - **Action:** Implement JSON logging for production observability.
 
-3. **Performance: Browser Context Pooling**
-   - **Plan:** Refactor `internal/collector/browser` to reuse Chrome instances.
-   - **Action:** Reduce CPU/Memory overhead by avoiding frequent process spawning.
+3. **Performance: Database Indices**
+   - **Plan:** Optimize JSON queries with generated columns and indices.
+   - **Action:** Add migrations for metric-specific indices.
 
-4. **Reliability: Failure Reporting & Webhook Retries**
-   - **Plan:** Improve job status logic and add retry logic for webhooks.
-   - **Action:** Correctly handle partial successes and transient webhook failures.
-
-5. **Ops: Schema Migrations**
-   - **Plan:** Integrate `golang-migrate` or similar for database versioning.
+4. **Maintenance**
+   - Monitor for ChromeDP version updates or CDP protocol changes.
+   - Refine INP approximation based on user feedback.

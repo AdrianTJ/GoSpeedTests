@@ -92,5 +92,13 @@ This document tracks the key architectural and design decisions made during the 
     - Worker Panic Recovery (Resilience)
     - Webhook Retries (Reliability)
 
+## 15. Lightweight Remediation Strategy
+**Decision:** Implement custom, lightweight solutions for Audit findings to avoid dependency bloat.
+- **Rationale:** To adhere to the principle of "minimal dependencies," we chose to implement a custom versioned migration runner and a manual URL validator instead of importing heavy external libraries like `golang-migrate` or third-party validation frameworks.
+- **Implementations:**
+    - **Migrations:** A 50-line `internal/store/migrations` package with a `schema_migrations` table.
+    - **Browser Management:** A central `internal/chrome/Manager` that orchestrates tab-based collection across workers.
+- **Outcome:** 100% resolution of high-priority audit items with zero new external dependencies.
+
 ---
-*Last Updated: April 20, 2026*
+*Last Updated: April 22, 2026*
