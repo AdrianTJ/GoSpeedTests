@@ -28,11 +28,10 @@ This document tracks the key architectural and design decisions made during the 
 - **Implementation Detail:** Used a custom `PerformanceObserver` injection script to capture Core Web Vitals (LCP, FCP, CLS) accurately as they occur in the browser.
 - **Outcome:** Integrated, programmable control over headless Chrome within the Go runtime.
 
-## 5. Persistence: Unified Store Abstraction
-**Decision:** Define a `Store` interface with a SQLite-first local implementation.
-- **Rationale:** Decoupling the persistence layer allows the system to support both local development (SQLite) and production deployments (Postgres) using the same code.
-- **Storage Choice:** Results are stored as JSON strings (to be JSONB in Postgres) to allow the schema to evolve without constant migrations as new performance metrics are added.
-- **Outcome:** Flexible, cross-backend persistence.
+## 5. Persistence: SQLite as the Sole Backend
+**Decision:** Drop Postgres support and consolidate on SQLite for all environments.
+- **Rationale:** Maintaining two database backends introduced significant development overhead (SQL dialect fragmentation, logic duplication, and double testing surface). Modern SQLite with WAL mode is more than capable of handling the expected load for a single-daemon monitoring tool.
+- **Outcome:** Simplified codebase, faster iteration, and a more focused "zero-config" developer experience.
 
 ## 6. Concurrency: Job State Machine & Worker Pool
 **Decision:** Implement an asynchronous job model with a configurable worker pool.
@@ -47,58 +46,38 @@ This document tracks the key architectural and design decisions made during the 
 
 ## 8. Dependencies
 **Decision:** Stick to the "Approved Dependencies" list in the Technical Documentation.
-- **Approved List:** `chromedp`, `go-sqlite3`, `lib/pq`, `uuid`, `yaml.v3`.
+- **Approved List:** `chromedp`, `go-sqlite3`, `uuid`, `yaml.v3`.
 - **Rationale:** Keeps the project lightweight and maintainable while ensuring we use the de-facto standards for Go performance and database work.
 
 ## 9. Strategic Expansion: Production Readiness
-**Decision:** Prioritize features that enable production-grade deployments (Postgres, Auth, Docker, Webhooks).
-- **Rationale:** While SQLite is excellent for local use, these additions ensure GoSpeedTest can scale to multi-node environments and integrate seamlessly with CI/CD and automation pipelines.
-- **Components:**
-    - **Postgres:** Multi-user, high-concurrency storage.
-    - **Auth:** Basic security for the API daemon.
-    - **Docker:** Simplified deployment with Chrome pre-installed.
-    - **Webhooks:** Push-based result delivery.
+**Decision:** Prioritize features that enable production-grade deployments (Auth, Docker, Webhooks).
+- **Rationale:** Focus on ensuring GoSpeedTest can scale on a single node and integrate seamlessly with CI/CD and automation pipelines without the complexity of external DB management.
 
 ## 10. v0.1 Specification Parity
 **Decision:** Formalize a "Gap Analysis" phase to reach 100% compliance with the v0.1 Technical Design Document.
 - **Rationale:** To ensure the project delivers on its initial promise of history tracking, health monitoring, and a hierarchical configuration system.
-- **Key Implementation Decisions:**
-    - **Config Hierarchy:** Implement a centralized `internal/config` to enforce **Flags > Env > YAML** priority.
-    - **Job Cancellation:** Add a `DELETE` endpoint and internal logic to prune pending jobs from the queue.
-    - **Waterfall Support:** Enhance the `browser` collector to capture network-level events for every sub-resource.
 
 ## 11. Resilience and Edge-Case Strategy
 **Decision:** Implement strict validation and timeout enforcement across all collection layers.
 - **Rationale:** Web measurement is inherently flaky. Our collectors must handle DNS failures, unreachable hosts, and slow-loading scripts gracefully without hanging the worker pool.
-- **Implementation:** Added dedicated test suites for context cancellation and network-level timeouts.
 
 ## 12. Final v0.1 Milestone Reached
 **Decision:** Declare v1.0.0 (Technical Spec Parity) complete on April 17, 2026.
-- **Summary:** All three measurement tiers (Network, Browser, Vitals) are fully implemented, verified with tests, and served via a production-ready API and CLI.
 
 ## 13. API Documentation: Interactive Swagger UI
 **Decision:** Adopt OpenAPI 3.0 and Swagger UI for API documentation.
-- **Rationale:** An interactive documentation portal allows developers to explore and test endpoints directly from the browser, significantly lowering the barrier for integration.
-- **Implementation:**
-    - **OpenAPI Spec:** Centralized `docs/openapi.yaml`.
-    - **UI Delivery:** Served via a lightweight HTML wrapper at `/docs` using a CDN-hosted Swagger UI to minimize binary size.
 
 ## 14. Prioritizing Production-Readiness Audit Findings
 **Decision:** Immediate prioritization of security, performance, and resilience gaps identified in the April 17, 2026 audit.
-- **Rationale:** While the project has reached functional parity, several "hidden" risks (SSRF, Browser process leaks, Worker crashes) could compromise stability in a real-world production environment. Addressing these now ensures a solid foundation before adding new features like Lighthouse.
-- **Priority Fixes:**
-    - SSRF Prevention (URL Validation)
-    - Browser Context Pooling (Performance)
-    - Worker Panic Recovery (Resilience)
-    - Webhook Retries (Reliability)
 
 ## 15. Lightweight Remediation Strategy
 **Decision:** Implement custom, lightweight solutions for Audit findings to avoid dependency bloat.
-- **Rationale:** To adhere to the principle of "minimal dependencies," we chose to implement a custom versioned migration runner and a manual URL validator instead of importing heavy external libraries like `golang-migrate` or third-party validation frameworks.
-- **Implementations:**
-    - **Migrations:** A 50-line `internal/store/migrations` package with a `schema_migrations` table.
-    - **Browser Management:** A central `internal/chrome/Manager` that orchestrates tab-based collection across workers.
-- **Outcome:** 100% resolution of high-priority audit items with zero new external dependencies.
+- **Outcome:** 100% resolution of high-priority audit items with zero new external dependencies (custom migrations, custom validation).
+
+## 16. Technical Debt Consolidation (The "SQLite Pivot")
+**Decision:** Formally remove Postgres driver and storage implementations on April 22, 2026.
+- **Rationale:** Eliminating the multi-DB abstraction allows the project to lean into SQLite-specific performance optimizations (like Generated Columns) and simplifies the testing infrastructure.
+- **Result:** Removal of `internal/store/postgres` and simplification of `internal/store/migrations`.
 
 ---
 *Last Updated: April 22, 2026*

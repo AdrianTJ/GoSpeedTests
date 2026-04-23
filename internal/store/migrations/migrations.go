@@ -12,7 +12,8 @@ type Migration struct {
 	SQL     string
 }
 
-func Run(ctx context.Context, db *sql.DB, driver string, migrations []Migration) error {
+// Run applies pending migrations to the SQLite database.
+func Run(ctx context.Context, db *sql.DB, migrations []Migration) error {
 	// 1. Ensure migrations table exists
 	_, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY)`)
 	if err != nil {
@@ -29,7 +30,7 @@ func Run(ctx context.Context, db *sql.DB, driver string, migrations []Migration)
 	// 3. Run pending migrations
 	for _, m := range migrations {
 		if m.Version > currentVersion {
-			log.Printf("Applying migration version %d (%s)", m.Version, driver)
+			log.Printf("Applying migration version %d", m.Version)
 			
 			tx, err := db.BeginTx(ctx, nil)
 			if err != nil {
@@ -41,13 +42,7 @@ func Run(ctx context.Context, db *sql.DB, driver string, migrations []Migration)
 				return fmt.Errorf("failed to apply migration %d: %w", m.Version, err)
 			}
 
-			// Choose placeholder based on driver
-			insertSQL := `INSERT INTO schema_migrations (version) VALUES (?)`
-			if driver == "postgres" {
-				insertSQL = `INSERT INTO schema_migrations (version) VALUES ($1)`
-			}
-			
-			if _, err := tx.ExecContext(ctx, insertSQL, m.Version); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations (version) VALUES (?)`, m.Version); err != nil {
 				tx.Rollback()
 				return fmt.Errorf("failed to update migration version %d: %w", m.Version, err)
 			}

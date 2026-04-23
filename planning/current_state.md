@@ -1,7 +1,7 @@
 # Project Status: GoSpeedTest
 
 **Current Date:** April 22, 2026
-**Version:** v1.0.0 (v0.1 Parity Reached)
+**Version:** v1.0.0 (SQLite Consolidation)
 
 ---
 
@@ -9,64 +9,43 @@
 
 | Category | Decision | Rationale |
 |---|---|---|
-| **Development Workflow** | Test-Driven Development (TDD) | Ensure reliability and high-fidelity measurement from the start. |
-| **Architecture** | Skeleton First (Monorepo) | Establish the full project structure before deep implementation to ensure clean package boundaries. |
-| **First Module** | Network Collector | Foundational, minimal dependencies, and provides immediate value with core network metrics. |
-| **Agent Roles** | Defined 4 Specialized Roles | Collector, Backend/API, Data, and Tooling specialists to guide development and reviews. |
-| **Strategy** | Production Readiness | Prioritized Postgres, Auth, Docker, and Webhooks to ensure a deployable v0.1. |
-| **Reliability** | Edge-Case Testing | Implemented dedicated tests for timeouts, unreachable hosts, full queues, and invalid inputs. |
-| **Security Audit** | Internal Audit Conducted | Identified 10 key findings across security, performance, and resilience. |
-| **Audit Remediation** | Top 5 Fixes Implemented | Addressed SSRF, Browser Reuse, Panic Recovery, Status Logic, and Migrations. |
+| **Storage** | SQLite-Only Architecture | Dropped Postgres to eliminate development overhead and dialect fragmentation. |
+| **Strategy** | Audit Remediation | Completed Top 5 fixes: SSRF, Browser Reuse, Panic Recovery, Status Logic, and Migrations. |
+| **Development** | TDD | High confidence in core engine through exhaustive unit and integration testing. |
 
 ---
 
 ## 2. Current Implementation State
 
 ### Completed
-- [x] Technical Documentation (`planning/technical_documentation.md`)
-- [x] Agent Role Definitions (`agents.md`)
-- [x] Project Roadmap & Strategy defined
-- [x] Initializing Go Module and project skeleton
-- [x] Network Collector (`internal/collector/network`) with full trace metrics
-- [x] Basic CLI (`cmd/gost`) for live testing
-- [x] Database Store (`internal/store`) abstraction with SQLite & Postgres implementations
-- [x] Job State Machine (`internal/job`) with worker pool and cancellation logic
-- [x] API Server (`cmd/gostd`) with full REST suite (Jobs, History, Health, Ready)
-- [x] Browser Collector (`internal/collector/browser`) with Waterfall support
-- [x] Core Web Vitals Collector (`internal/collector/vitals`) with approximate INP
-- [x] Refined CLI (`cmd/gost`) with JSON/CSV/Text reporting and persistence
-- [x] Authentication / API keys for `gostd` (Security)
-- [x] Docker / Container Packaging (Portability)
-- [x] Webhook callbacks (Automation)
-- [x] Centralized Configuration (`internal/config`) with hierarchical loading
-- [x] Robust Edge-Case Testing (Timeouts, Queue limits, Invalid inputs)
-- [x] Interactive API Documentation (Swagger UI) at `/docs`
-- [x] **Production-Readiness Audit Fixes (Security, Performance, Resilience, Ops)**
+- [x] Network, Browser, and Vitals measurement tiers.
+- [x] CLI (`gost`) and REST API (`gostd`).
+- [x] SQLite persistence with WAL mode and versioned migrations.
+- [x] Shared Browser Context Management (Tab-based reuse).
+- [x] SSRF Protection (URL Validation).
+- [x] Worker panic recovery and Partial success reporting.
+- [x] Interactive API Documentation (Swagger UI).
 
 ### In Progress
-- [ ] Final project documentation and cleanup
-- [ ] Remaining Audit findings (Webhooks, Logging, etc.)
+- [ ] Removing Postgres-related code and dependencies.
+- [ ] Refactoring `internal/store` to be SQLite-specific (removing interface overhead).
+- [ ] Final project documentation and cleanup.
 
 ### Pending
-- [ ] Lighthouse integration (Deferred to v1.1)
-- [ ] Distributed workers (Deferred to v1.2)
+- [ ] Lighthouse integration.
+- [ ] Webhook retry logic.
 
 ---
 
-## 3. Next Steps
+## 3. Next Steps (Immediate)
 
-1. **Reliability: Webhook Retries**
-   - **Plan:** Implement a retry queue for failed webhook deliveries.
-   - **Action:** Add exponential backoff and persistence for pending webhooks.
+1. **Code Cleanup: Drop Postgres**
+   - **Action:** Delete `internal/store/postgres` and remove `github.com/lib/pq` from `go.mod`.
+   - **Action:** Simplify `internal/store` by merging `sqlite/` into the main package or removing the now-redundant interface.
 
-2. **Ops: Structured Logging**
-   - **Plan:** Replace standard `log` with `log/slog`.
-   - **Action:** Implement JSON logging for production observability.
+2. **Optimization: SQLite Generated Columns**
+   - **Action:** Add migrations to use SQLite 3.31+ generated columns for metrics.
+   - **Action:** Simplify history queries by querying columns instead of parsing JSON.
 
-3. **Performance: Database Indices**
-   - **Plan:** Optimize JSON queries with generated columns and indices.
-   - **Action:** Add migrations for metric-specific indices.
-
-4. **Maintenance**
-   - Monitor for ChromeDP version updates or CDP protocol changes.
-   - Refine INP approximation based on user feedback.
+3. **Ops: Structured Logging**
+   - **Action:** Migrate to `slog` for structured JSON output.

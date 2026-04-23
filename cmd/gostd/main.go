@@ -4,14 +4,11 @@ import (
 	"flag"
 	"log"
 	"net/http"
-	"strings"
 
 	"github.com/AdrianTJ/gospeedtest/internal/api"
 	"github.com/AdrianTJ/gospeedtest/internal/config"
 	"github.com/AdrianTJ/gospeedtest/internal/job"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
-	"github.com/AdrianTJ/gospeedtest/internal/store/postgres"
-	"github.com/AdrianTJ/gospeedtest/internal/store/sqlite"
 )
 
 func main() {
@@ -28,15 +25,8 @@ func main() {
 		dbURL = "./gospeedtest.db"
 	}
 
-	var s store.Store
-	if strings.HasPrefix(dbURL, "postgres://") || strings.HasPrefix(dbURL, "postgresql://") {
-		log.Println("Using Postgres backend")
-		s, err = postgres.NewStore(dbURL)
-	} else {
-		log.Println("Using SQLite backend")
-		s, err = sqlite.NewStore(dbURL)
-	}
-
+	log.Println("Using SQLite backend")
+	s, err := store.NewStore(dbURL)
 	if err != nil {
 		log.Fatalf("Failed to initialize store: %v", err)
 	}
