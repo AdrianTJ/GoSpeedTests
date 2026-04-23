@@ -15,8 +15,8 @@
   - **CLI (`gost`):** Optimized for ad-hoc testing, scripts, and local developer use.
   - **API Daemon (`gostd`):** A RESTful API for CI/CD integration and automated monitoring.
 - **Production Ready:**
-  - **Persistence:** Support for both SQLite (local) and Postgres (production).
-  - **Security:** API Key authentication.
+  - **Embedded Persistence:** Zero-config SQLite backend with WAL mode for high concurrency.
+  - **Security:** SSRF protection and API Key authentication.
   - **Automation:** Webhook callbacks on job completion.
   - **Portability:** Multi-stage Dockerfile included.
 
@@ -64,7 +64,7 @@ GoSpeedTest follows a strict configuration hierarchy: **Flags > Environment Vari
 | Env Variable | Default | Description |
 |---|---|---|
 | `GOST_LISTEN_ADDR` | `:8080` | API server address |
-| `DATABASE_URL` | `gospeedtest.db` | SQLite path or Postgres DSN |
+| `DATABASE_URL` | `gospeedtest.db` | SQLite database path |
 | `GOST_API_KEY` | *(unset)* | API key for authentication |
 | `GOST_WORKERS` | `4` | Number of concurrent workers |
 
