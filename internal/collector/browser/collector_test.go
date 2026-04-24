@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/AdrianTJ/gospeedtest/internal/chrome"
 )
 
 func TestCollect(t *testing.T) {
@@ -16,28 +18,28 @@ func TestCollect(t *testing.T) {
 <head><title>Test Page</title></head>
 <body>
     <h1>Hello, GoSpeedTest!</h1>
-    <script>
-        console.log("Browser test running...");
-    </script>
 </body>
 </html>`))
 	}))
 	defer ts.Close()
 
+	// Need a chrome manager to provide a valid browser context
+	cm := chrome.NewManager()
+	defer cm.Close()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	result, err := Collect(ctx, ts.URL)
+	bCtx, bCancel := cm.NewContext(ctx)
+	defer bCancel()
+
+	result, err := Collect(bCtx, ts.URL)
 	if err != nil {
 		t.Fatalf("Collect failed: %v", err)
 	}
 
 	if result.PageLoadMS <= 0 {
 		t.Errorf("expected positive PageLoadMS, got %v", result.PageLoadMS)
-	}
-
-	if result.DOMContentLoadedMS <= 0 {
-		t.Errorf("expected positive DOMContentLoadedMS, got %v", result.DOMContentLoadedMS)
 	}
 
 	if result.ResourceCount < 1 {

@@ -3,6 +3,7 @@ package network
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptrace"
@@ -83,6 +84,10 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 	}
 	if !gotFirstByte.IsZero() {
 		res.TransferMS = float64(gotResponse.Sub(gotFirstByte).Nanoseconds()) / 1e6
+	}
+
+	if resp.StatusCode >= 400 {
+		return res, fmt.Errorf("server returned status code %d", resp.StatusCode)
 	}
 
 	return res, nil

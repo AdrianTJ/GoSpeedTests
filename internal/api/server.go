@@ -43,19 +43,21 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
+
+	// Public routes
 	mux.HandleFunc("GET /v1/health", s.handleHealth)
 	mux.HandleFunc("GET /v1/ready", s.handleReady)
-	mux.HandleFunc("GET /v1/history", s.handleHistory)
-	mux.HandleFunc("POST /v1/jobs", s.handleCreateJob)
-	mux.HandleFunc("GET /v1/jobs", s.handleListJobs)
-	mux.HandleFunc("GET /v1/jobs/", s.handleGetJob)
-	mux.HandleFunc("DELETE /v1/jobs/", s.handleDeleteJob)
-
-	// Documentation
 	mux.HandleFunc("GET /openapi.yaml", s.handleOpenAPI)
 	mux.HandleFunc("GET /docs", s.handleDocs)
 
-	return s.authMiddleware(mux)
+	// Protected routes
+	mux.Handle("GET /v1/history", s.authMiddleware(http.HandlerFunc(s.handleHistory)))
+	mux.Handle("POST /v1/jobs", s.authMiddleware(http.HandlerFunc(s.handleCreateJob)))
+	mux.Handle("GET /v1/jobs", s.authMiddleware(http.HandlerFunc(s.handleListJobs)))
+	mux.Handle("GET /v1/jobs/{id}", s.authMiddleware(http.HandlerFunc(s.handleGetJob)))
+	mux.Handle("DELETE /v1/jobs/{id}", s.authMiddleware(http.HandlerFunc(s.handleDeleteJob)))
+
+	return mux
 }
 
 func (s *Server) handleOpenAPI(w http.ResponseWriter, r *http.Request) {
@@ -64,98 +66,53 @@ func (s *Server) handleOpenAPI(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDocs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, `
+	fmt.Fprint(w, `
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>GoSpeedTest API Docs</title>
-    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GoSpeedTest API Docs</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css" />
 </head>
 <body>
-    <div id="swagger-ui"></div>
-    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-    <script>
-        window.onload = () => {
-            window.ui = SwaggerUIBundle({
-                url: '/openapi.yaml',
-                dom_id: '#swagger-ui',
-            });
-        };
-    </script>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js" crossorigin></script>
+  <script>
+    window.onload = () => {
+      window.ui = SwaggerUIBundle({
+        url: '/openapi.yaml',
+        dom_id: '#swagger-ui',
+      });
+    };
+  </script>
 </body>
 </html>
-	`)
-}
-
-func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
-	url := r.URL.Query().Get("url")
-	if url == "" {
-		http.Error(w, "missing url parameter", http.StatusBadRequest)
-		return
-	}
-
-	history, err := s.store.GetHistory(r.Context(), url)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(history)
-}
-
-func (s *Server) handleDeleteJob(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/v1/jobs/")
-	if id == "" {
-		http.Error(w, "missing job id", http.StatusBadRequest)
-		return
-	}
-
-	if err := s.manager.CancelJob(r.Context(), id); err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
-	jobs, err := s.store.ListJobs(r.Context(), 50)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(jobs)
+`)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"ok"}`))
+	w.Write([]byte("OK"))
 }
 
 func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
-	// Simple check: can we talk to the store?
 	if _, err := s.store.ListJobs(r.Context(), 1); err != nil {
-		http.Error(w, "store not ready", http.StatusServiceUnavailable)
+		http.Error(w, "database not ready", http.StatusServiceUnavailable)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"ready"}`))
-}
-
-type CreateJobRequest struct {
-	URL        string            `json:"url"`
-	Tiers      []string          `json:"tiers"`
-	Runs       int               `json:"runs"`
-	TimeoutS   int               `json:"timeout_s"`
-	Tags       map[string]string `json:"tags"`
-	WebhookURL string            `json:"webhook_url"`
+	w.Write([]byte("READY"))
 }
 
 func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
-	var req CreateJobRequest
+	var req struct {
+		URL        string   `json:"url"`
+		Tiers      []string `json:"tiers"`
+		Runs       int      `json:"runs"`
+		WebhookURL string   `json:"webhook_url"`
+	}
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
@@ -183,10 +140,9 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"job_id":   job.ID,
-		"status":   job.Status,
-		"poll_url": "/v1/jobs/" + job.ID,
+	json.NewEncoder(w).Encode(map[string]string{
+		"job_id": job.ID,
+		"status": string(job.Status),
 	})
 }
 
@@ -207,11 +163,7 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results, err := s.store.GetResultsByJobID(r.Context(), id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	results, _ := s.store.GetResultsByJobID(r.Context(), id)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -223,4 +175,50 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 		"error":        job.Error,
 		"results":      results,
 	})
+}
+
+func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
+	jobs, err := s.store.ListJobs(r.Context(), 50)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(jobs)
+}
+
+func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
+	url := r.URL.Query().Get("url")
+	if url == "" {
+		http.Error(w, "missing url parameter", http.StatusBadRequest)
+		return
+	}
+
+	history, err := s.store.GetHistory(r.Context(), url)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(history)
+}
+
+func (s *Server) handleDeleteJob(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/v1/jobs/")
+	if id == "" {
+		http.Error(w, "missing job id", http.StatusBadRequest)
+		return
+	}
+
+	// First try to cancel it if it's pending
+	_ = s.manager.CancelJob(r.Context(), id)
+
+	if err := s.store.DeleteJob(r.Context(), id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
