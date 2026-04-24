@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 )
 
@@ -27,19 +28,23 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 	// This script uses the PerformanceObserver API to capture CWV metrics.
 	const script = `
 		(function() {
+			console.log('Vitals script starting...');
 			window.__vitals = { fcp: 0, lcp: 0, cls: 0, inp: 0 };
 			
 			// FCP
 			new PerformanceObserver((entryList) => {
 				for (const entry of entryList.getEntriesByName('first-contentful-paint')) {
+					console.log('FCP found:', entry.startTime);
 					window.__vitals.fcp = entry.startTime;
 				}
 			}).observe({type: 'paint', buffered: true});
 
 			// LCP
 			new PerformanceObserver((entryList) => {
-				for (const entry of entryList.getEntries()) {
-					window.__vitals.lcp = entry.startTime;
+				const entries = entryList.getEntries();
+				if (entries.length > 0) {
+					console.log('LCP found:', entries[entries.length - 1].startTime);
+					window.__vitals.lcp = entries[entries.length - 1].startTime;
 				}
 			}).observe({type: 'largest-contentful-paint', buffered: true});
 
@@ -47,6 +52,7 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 			new PerformanceObserver((entryList) => {
 				for (const entry of entryList.getEntries()) {
 					if (!entry.hadRecentInput) {
+						console.log('CLS entry found:', entry.value);
 						window.__vitals.cls += entry.value;
 					}
 				}
@@ -56,22 +62,25 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 			new PerformanceObserver((entryList) => {
 				for (const entry of entryList.getEntries()) {
 					if (entry.duration > window.__vitals.inp) {
+						console.log('INP found:', entry.duration);
 						window.__vitals.inp = entry.duration;
 					}
 				}
 			}).observe({type: 'event-timing', buffered: true, durationThreshold: 0});
+			console.log('PerformanceObservers initialized');
 		})();
 	`
 
 	err := chromedp.Run(taskCtx,
-		chromedp.Navigate(url),
-		// Inject script as soon as possible after navigation starts
+		// Ensure the script runs on every new document (before navigation finishes)
 		chromedp.ActionFunc(func(ctx context.Context) error {
-			return chromedp.Evaluate(script, nil).Do(ctx)
+			_, err := page.AddScriptToEvaluateOnNewDocument(script).Do(ctx)
+			return err
 		}),
+		chromedp.Navigate(url),
 		// Wait for the page to be somewhat stable
 		chromedp.WaitReady("body", chromedp.ByQuery),
-		chromedp.Sleep(1 * time.Second),
+		chromedp.Sleep(2 * time.Second),
 		// Inject synthetic interactions to trigger INP
 		chromedp.Click("body", chromedp.ByQuery),
 		chromedp.Sleep(1 * time.Second),
