@@ -20,14 +20,17 @@ func NewManager() *Manager {
 		chromedp.NoSandbox,
 		chromedp.DisableGPU,
 		chromedp.Headless,
+		// Force a consistent window size and User-Agent to ensure paints fire
+		chromedp.WindowSize(1920, 1080),
+		chromedp.UserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"),
 	)
 
 	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
 	
-	// Create the browser instance
+	// Create the master browser context
 	browserCtx, _ := chromedp.NewContext(allocCtx)
 	
-	// Start the browser
+	// Start the browser to ensure it's ready
 	if err := chromedp.Run(browserCtx); err != nil {
 		log.Printf("Failed to start browser: %v", err)
 	}

@@ -29,10 +29,6 @@ type Result struct {
 
 // Collect performs a full page load analysis using headless Chrome.
 func Collect(ctx context.Context, url string) (*Result, error) {
-	// Create a new tab context from the parent context
-	taskCtx, cancelTask := chromedp.NewContext(ctx)
-	defer cancelTask()
-
 	var (
 		res       Result
 		startTime = time.Now()
@@ -41,7 +37,7 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 	)
 
 	// Listen for network events to build waterfall
-	chromedp.ListenTarget(taskCtx, func(ev interface{}) {
+	chromedp.ListenTarget(ctx, func(ev interface{}) {
 		switch ev := ev.(type) {
 		case *network.EventResponseReceived:
 			mu.Lock()
@@ -57,13 +53,15 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 
 	// Perform navigation and extract timings via JS Performance API
 	var timing map[string]float64
-	err := chromedp.Run(taskCtx,
+	err := chromedp.Run(ctx,
+		chromedp.EmulateViewport(1280, 800),
 		network.Enable(),
 		chromedp.Navigate(url),
 		// Wait until the load event is definitely fired
 		chromedp.WaitReady("body", chromedp.ByQuery),
 		chromedp.Evaluate(`(function() {
 			const t = performance.getEntriesByType("navigation")[0];
+			if (!t) return { "domContentLoaded": 0, "loadEventEnd": 0 };
 			return {
 				"domContentLoaded": t.domContentLoadedEventEnd,
 				"loadEventEnd": t.loadEventEnd

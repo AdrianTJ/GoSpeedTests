@@ -219,6 +219,7 @@ func (m *Manager) processJob(job *store.Job) {
 			}
 		}
 
+
 		if !runFailed {
 			successCount++
 		}
