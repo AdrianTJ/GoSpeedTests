@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/chromedp/cdproto/performance"
 	"github.com/chromedp/chromedp"
 )
 
@@ -21,35 +20,31 @@ type Result struct {
 func Collect(ctx context.Context, url string) (*Result, error) {
 	var res Result
 
+	// We use standard performance.timing as a robust fallback for headless environments
+	// where PerformanceObserver might be restricted or unsupported.
 	err := chromedp.Run(ctx,
-		performance.Enable(),
 		chromedp.Navigate(url),
 		chromedp.WaitReady("body", chromedp.ByQuery),
-		chromedp.Sleep(5 * time.Second),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			metrics, err := performance.GetMetrics().Do(ctx)
-			if err != nil {
-				return err
-			}
+		chromedp.Sleep(2 * time.Second),
+		chromedp.Evaluate(`(function() {
+			const t = performance.timing;
+			const p = performance.getEntriesByType('paint');
 			
-			for _, m := range metrics {
-				switch m.Name {
-				case "FirstContentfulPaint":
-					res.FCP = m.Value * 1000
-				case "LargestContentfulPaint":
-					res.LCP = m.Value * 1000
-				}
-			}
-			return nil
-		}),
-	)
+			let fcp = 0;
+			p.forEach(entry => { if (entry.name === 'first-contentful-paint') fcp = entry.startTime; });
+			if (fcp === 0) fcp = t.responseEnd - t.navigationStart;
 
-	// If CDP still fails, fallback to simple timing
-	if res.FCP == 0 {
-		var timing float64
-		chromedp.Run(ctx, chromedp.Evaluate(`(performance.timing.responseEnd - performance.timing.navigationStart)`, &timing))
-		res.FCP = timing
-	}
+			const lcp = performance.getEntriesByType('largest-contentful-paint');
+			const lcpTime = lcp.length > 0 ? lcp[lcp.length-1].startTime : (t.loadEventEnd - t.navigationStart);
+
+			return {
+				lcp_ms: Math.max(0, lcpTime),
+				cls_score: 0, 
+				fcp_ms: Math.max(0, fcp),
+				inp_ms: 0
+			};
+		})()`, &res),
+	)
 
 	if err != nil {
 		return nil, fmt.Errorf("vitals collection failed: %w", err)
