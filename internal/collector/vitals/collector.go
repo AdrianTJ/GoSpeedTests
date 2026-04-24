@@ -11,7 +11,6 @@ import (
 // Result represents the Core Web Vitals metrics.
 type Result struct {
 	LCP float64 `json:"lcp_ms"`
-	CLS float64 `json:"cls_score"`
 	FCP float64 `json:"fcp_ms"`
 	INP float64 `json:"inp_ms"`
 }
@@ -20,8 +19,6 @@ type Result struct {
 func Collect(ctx context.Context, url string) (*Result, error) {
 	var res Result
 
-	// We use standard performance.timing as a robust fallback for headless environments
-	// where PerformanceObserver might be restricted or unsupported.
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(url),
 		chromedp.WaitReady("body", chromedp.ByQuery),
@@ -39,7 +36,6 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 
 			return {
 				lcp_ms: Math.max(0, lcpTime),
-				cls_score: 0, 
 				fcp_ms: Math.max(0, fcp),
 				inp_ms: 0
 			};

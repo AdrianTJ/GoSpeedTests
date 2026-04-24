@@ -45,7 +45,6 @@ func WriteText(w io.Writer, summaries []Summary) {
 		if s.Vitals != nil {
 			fmt.Fprintf(tw, "%s\tvitals\tLCP\t%.2fms\n", s.URL, s.Vitals.LCP)
 			fmt.Fprintf(tw, "%s\tvitals\tFCP\t%.2fms\n", s.URL, s.Vitals.FCP)
-			fmt.Fprintf(tw, "%s\tvitals\tCLS\t%.4f\n", s.URL, s.Vitals.CLS)
 		}
 	}
 	tw.Flush()
@@ -65,7 +64,7 @@ func WriteCSV(w io.Writer, summaries []Summary) error {
 		}
 		if s.Vitals != nil {
 			cw.Write([]string{s.URL, "vitals", "lcp_ms", fmt.Sprintf("%.2f", s.Vitals.LCP)})
-			cw.Write([]string{s.URL, "vitals", "cls_score", fmt.Sprintf("%.4f", s.Vitals.CLS)})
+			cw.Write([]string{s.URL, "vitals", "fcp_ms", fmt.Sprintf("%.2f", s.Vitals.FCP)})
 		}
 	}
 	cw.Flush()

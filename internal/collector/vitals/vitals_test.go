@@ -28,7 +28,7 @@ func TestVitalsCollector_Functional(t *testing.T) {
 		t.Fatalf("vitals collection failed: %v", err)
 	}
 
-	t.Logf("Collected: FCP=%.2f, LCP=%.2f, CLS=%.4f", res.FCP, res.LCP, res.CLS)
+	t.Logf("Collected: FCP=%.2f, LCP=%.2f", res.FCP, res.LCP)
 
 	if res.FCP <= 0 {
 		t.Errorf("expected positive FCP, got %v", res.FCP)
