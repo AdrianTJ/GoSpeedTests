@@ -1,7 +1,7 @@
 # Project Status: GoSpeedTest
 
-**Current Date:** April 22, 2026
-**Version:** v1.0.0 (SQLite Consolidation)
+**Current Date:** April 23, 2026
+**Version:** v1.0.0 (SQLite-Only Stable)
 
 ---
 
@@ -9,43 +9,38 @@
 
 | Category | Decision | Rationale |
 |---|---|---|
-| **Storage** | SQLite-Only Architecture | Dropped Postgres to eliminate development overhead and dialect fragmentation. |
-| **Strategy** | Audit Remediation | Completed Top 5 fixes: SSRF, Browser Reuse, Panic Recovery, Status Logic, and Migrations. |
-| **Development** | TDD | High confidence in core engine through exhaustive unit and integration testing. |
+| **Storage** | SQLite-Only Architecture | Eliminated multi-DB overhead to simplify the codebase and testing. |
+| **Audit** | Security Remediation | Addressed all Top 5 priority audit findings (SSRF, Browser Reuse, etc.). |
+| **Vitals** | Performance API Fallback | Switched from flaky `PerformanceObserver` to robust CDP performance metrics. |
 
 ---
 
 ## 2. Current Implementation State
 
 ### Completed
-- [x] Network, Browser, and Vitals measurement tiers.
-- [x] CLI (`gost`) and REST API (`gostd`).
-- [x] SQLite persistence with WAL mode and versioned migrations.
+- [x] Network, Browser, and Vitals collection.
+- [x] CLI and REST API daemon.
+- [x] SQLite-only persistence with WAL mode and versioned migrations.
 - [x] Shared Browser Context Management (Tab-based reuse).
 - [x] SSRF Protection (URL Validation).
 - [x] Worker panic recovery and Partial success reporting.
 - [x] Interactive API Documentation (Swagger UI).
-
-### In Progress
-- [ ] Removing Postgres-related code and dependencies.
-- [ ] Refactoring `internal/store` to be SQLite-specific (removing interface overhead).
-- [ ] Final project documentation and cleanup.
+- [x] Comprehensive test suite (Migration runner, concurrency, Auth, Partial logic).
 
 ### Pending
 - [ ] Lighthouse integration.
-- [ ] Webhook retry logic.
+- [ ] Distributed workers.
+- [ ] Structured logging (slog).
 
 ---
 
 ## 3. Next Steps (Immediate)
 
-1. **Code Cleanup: Drop Postgres**
-   - **Action:** Delete `internal/store/postgres` and remove `github.com/lib/pq` from `go.mod`.
-   - **Action:** Simplify `internal/store` by merging `sqlite/` into the main package or removing the now-redundant interface.
+1. **Structured Logging**
+   - **Plan:** Migrate from `log` to `slog` for structured JSON output.
 
-2. **Optimization: SQLite Generated Columns**
-   - **Action:** Add migrations to use SQLite 3.31+ generated columns for metrics.
-   - **Action:** Simplify history queries by querying columns instead of parsing JSON.
+2. **Database Optimization**
+   - **Plan:** Leverage SQLite generated columns for metrics to improve history query performance.
 
-3. **Ops: Structured Logging**
-   - **Action:** Migrate to `slog` for structured JSON output.
+3. **Production Audit Cleanup**
+   - **Plan:** Implement retry logic for webhooks to handle transient failures.

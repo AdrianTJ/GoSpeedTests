@@ -71,8 +71,6 @@ DELETE FROM jobs;
 
 ## 6. Performance Optimization
 
-The current queries use `json_extract` on every row, which will degrade performance as the `results` table grows. 
-
 ### Recommended: SQLite Generated Columns
 Create a virtual or stored generated column and index it for fast aggregations on TTFB.
 
