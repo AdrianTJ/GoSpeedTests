@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"sync"
 	"time"
@@ -18,11 +19,18 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	maxWebhookRetries = 5
+	webhookBatchSize  = 10
+	webhookTickRate   = 5 * time.Second
+)
+
 // Manager handles job orchestration and the worker pool.
 type Manager struct {
 	store        store.Store
 	chrome       *chrome.Manager
 	jobQueue     chan *store.Job
+	webhookChan  chan string // deliveryID
 	workerCount  int
 	wg           sync.WaitGroup
 	ctx          context.Context
@@ -38,6 +46,7 @@ func NewManager(s store.Store, workerCount int, queueDepth int) *Manager {
 		store:       s,
 		chrome:      chrome.NewManager(),
 		jobQueue:    make(chan *store.Job, queueDepth),
+		webhookChan: make(chan string, 100),
 		workerCount: workerCount,
 		ctx:         ctx,
 		cancel:      cancel,
@@ -45,18 +54,21 @@ func NewManager(s store.Store, workerCount int, queueDepth int) *Manager {
 	}
 }
 
-// Start launches the worker pool.
+// Start launches the worker pool and webhook retry loop.
 func (m *Manager) Start() {
 	for i := 0; i < m.workerCount; i++ {
 		m.wg.Add(1)
 		go m.worker(i)
 	}
+	m.wg.Add(1)
+	go m.webhookWorker()
 }
 
 // Stop gracefully shuts down the worker pool.
 func (m *Manager) Stop() {
 	m.cancel()
 	close(m.jobQueue)
+	close(m.webhookChan)
 	m.wg.Wait()
 	m.chrome.Close()
 }
@@ -249,34 +261,135 @@ func (m *Manager) processJob(job *store.Job) {
 	}
 
 	if job.WebhookURL != "" {
-		go m.sendWebhook(job.ID)
+		m.sendWebhook(job.ID)
 	}
 }
 
 func (m *Manager) sendWebhook(jobID string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	job, err := m.store.GetJob(ctx, jobID)
-	if err != nil || job == nil {
+	// 1. Get job and results to build payload
+	job, err := m.store.GetJob(m.ctx, jobID)
+	if err != nil || job == nil || job.WebhookURL == "" {
 		return
 	}
 
-	results, _ := m.store.GetResultsByJobID(ctx, jobID)
-
+	results, _ := m.store.GetResultsByJobID(m.ctx, jobID)
 	payload := map[string]interface{}{
 		"job_id":  job.ID,
 		"status":  job.Status,
 		"url":     job.URL,
 		"results": results,
 	}
-
 	body, _ := json.Marshal(payload)
-	resp, err := http.Post(job.WebhookURL, "application/json", bytes.NewBuffer(body))
-	if err != nil {
-		slog.Error("Webhook failed", "job_id", job.ID, "error", err)
+
+	// 2. Persist initial delivery record
+	delivery := &store.WebhookDelivery{
+		ID:        "wh_" + uuid.New().String()[:8],
+		JobID:     job.ID,
+		URL:       job.WebhookURL,
+		Payload:   body,
+		Status:    "PENDING",
+		CreatedAt: time.Now(),
+	}
+
+	if err := m.store.EnqueueWebhook(m.ctx, delivery); err != nil {
+		slog.Error("Failed to enqueue webhook", "job_id", jobID, "error", err)
 		return
 	}
-	defer resp.Body.Close()
-	slog.Info("Webhook sent", "job_id", job.ID, "status_code", resp.StatusCode)
+
+	// 3. Notify worker to attempt delivery
+	select {
+	case m.webhookChan <- delivery.ID:
+	default:
+		// Channel full, background tick will pick it up
+	}
+}
+
+func (m *Manager) webhookWorker() {
+	defer m.wg.Done()
+	slog.Info("Webhook worker started")
+
+	ticker := time.NewTicker(webhookTickRate)
+	defer ticker.Stop()
+
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	for {
+		select {
+		case <-m.ctx.Done():
+			slog.Info("Webhook worker shutting down")
+			return
+		case <-ticker.C:
+			// Regular sweep for pending deliveries
+			m.processPendingWebhooks(client)
+		case deliveryID := <-m.webhookChan:
+			// Immediate attempt for specific delivery
+			m.attemptWebhook(client, deliveryID)
+		}
+	}
+}
+
+func (m *Manager) processPendingWebhooks(client *http.Client) {
+	// Simple limit to prevent starvation
+	deliveries, err := m.store.GetPendingWebhooks(m.ctx, webhookBatchSize)
+	if err != nil {
+		slog.Error("Failed to fetch pending webhooks", "error", err)
+		return
+	}
+
+	for _, d := range deliveries {
+		m.sendOneWebhook(client, d)
+	}
+}
+
+func (m *Manager) attemptWebhook(client *http.Client, deliveryID string) {
+	// For immediate attempts, we need to fetch the full delivery first
+	// We'll use a temporary context for the DB fetch
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// This is a bit inefficient (extra DB call), but keeps logic clean
+	deliveries, err := m.store.GetPendingWebhooks(ctx, 100) // Filter by ID would be better but we only have GetPending
+	if err != nil {
+		return
+	}
+	
+	for _, d := range deliveries {
+		if d.ID == deliveryID {
+			m.sendOneWebhook(client, d)
+			return
+		}
+	}
+}
+
+func (m *Manager) sendOneWebhook(client *http.Client, d store.WebhookDelivery) {
+	now := time.Now()
+	d.Attempts++
+	d.LastAttempt = &now
+
+	resp, err := client.Post(d.URL, "application/json", bytes.NewBuffer(d.Payload))
+	
+	success := err == nil && resp != nil && resp.StatusCode >= 200 && resp.StatusCode < 300
+	if resp != nil {
+		defer resp.Body.Close()
+	}
+
+	if success {
+		slog.Info("Webhook delivered", "job_id", d.JobID, "delivery_id", d.ID, "attempts", d.Attempts)
+		m.store.UpdateWebhookStatus(m.ctx, d.ID, "SUCCESS", d.Attempts, d.LastAttempt, nil)
+		return
+	}
+
+	// Handle failure
+	if d.Attempts >= maxWebhookRetries {
+		slog.Error("Webhook failed permanently", "job_id", d.JobID, "delivery_id", d.ID, "attempts", d.Attempts, "error", err)
+		m.store.UpdateWebhookStatus(m.ctx, d.ID, "FAILED", d.Attempts, d.LastAttempt, nil)
+		return
+	}
+
+	// Calculate exponential backoff (e.g., 2, 4, 8, 16, 32 minutes)
+	backoff := time.Duration(math.Pow(2, float64(d.Attempts))) * time.Minute
+	nextAttempt := now.Add(backoff)
+
+	slog.Warn("Webhook failed, scheduling retry", "job_id", d.JobID, "delivery_id", d.ID, "attempts", d.Attempts, "next_attempt", nextAttempt, "error", err)
+	m.store.UpdateWebhookStatus(m.ctx, d.ID, "PENDING", d.Attempts, d.LastAttempt, &nextAttempt)
 }
