@@ -70,10 +70,10 @@ This document contains the findings of a senior software engineering audit perfo
 **Issue:** **Lack of Migration Strategy.**  
 **Fix:** Integrated a custom versioned migration runner in `internal/store/migrations`. Refactored SQLite and Postgres stores to use this unified strategy.  
 
-**[SEVERITY: Medium]**  
+**[SEVERITY: Medium] [STATUS: RESOLVED - 2026-04-24]**  
 **File:** Entire Codebase  
 **Issue:** **Lack of Structured Logging.** Standard `log.Printf` is insufficient for production observability.  
-**Recommendation:** Migrate to `slog` (stdlib) or `zap` for structured JSON logging.
+**Fix:** Migrated the entire project to `log/slog`. Implementation uses a JSON handler and is configurable via `log_level` in `config.yaml` or `GOST_LOG_LEVEL` environment variable. Centralized initialization in `internal/config.SetupLogger`.
 
 ---
 

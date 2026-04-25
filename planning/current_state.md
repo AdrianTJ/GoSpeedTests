@@ -26,21 +26,18 @@
 - [x] Worker panic recovery and Partial success reporting.
 - [x] Interactive API Documentation (Swagger UI).
 - [x] Comprehensive test suite (Migration runner, concurrency, Auth, Partial logic).
+- [x] Structured Logging (slog) with JSON output.
 
 ### Pending
 - [ ] Lighthouse integration.
 - [ ] Distributed workers.
-- [ ] Structured logging (slog).
 
 ---
 
 ## 3. Next Steps (Immediate)
 
-1. **Structured Logging**
-   - **Plan:** Migrate from `log` to `slog` for structured JSON output.
-
-2. **Database Optimization**
+1. **Database Optimization**
    - **Plan:** Leverage SQLite generated columns for metrics to improve history query performance.
 
-3. **Production Audit Cleanup**
+2. **Production Audit Cleanup**
    - **Plan:** Implement retry logic for webhooks to handle transient failures.

@@ -58,5 +58,15 @@ This document tracks the key architectural and design decisions made during the 
 - **Rationale:** Eliminating the multi-DB abstraction allows the project to lean into SQLite-specific performance optimizations (like Generated Columns) and simplifies the testing infrastructure.
 - **Result:** Removal of `internal/store/postgres` and simplification of `internal/store/migrations`.
 
+## 12. "Fail-Secure" Authentication
+**Decision:** Require an API key by default and refuse to start if missing.
+- **Rationale:** Insecure defaults lead to accidental exposure. By forcing a key (or an explicit `-insecure` flag), we ensure users make a conscious choice about their security posture.
+- **Outcome:** Higher baseline security for production deployments.
+
+## 13. Structured Logging (slog)
+**Decision:** Replace standard `log` with Go 1.21 `slog`.
+- **Rationale:** JSON-structured logs are industry standard for production observability, allowing for easier filtering, aggregation, and alerting in log management systems.
+- **Outcome:** Improved operational visibility.
+
 ---
-*Last Updated: April 23, 2026*
+*Last Updated: April 24, 2026*
