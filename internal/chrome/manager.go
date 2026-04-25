@@ -2,7 +2,7 @@ package chrome
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sync"
 
 	"github.com/chromedp/chromedp"
@@ -32,7 +32,7 @@ func NewManager() *Manager {
 	
 	// Start the browser to ensure it's ready
 	if err := chromedp.Run(browserCtx); err != nil {
-		log.Printf("Failed to start browser: %v", err)
+		slog.Error("Failed to start browser", "error", err)
 	}
 
 	return &Manager{

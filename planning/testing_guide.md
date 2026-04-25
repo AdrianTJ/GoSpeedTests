@@ -171,11 +171,20 @@ curl -i -X POST http://localhost:8080/v1/jobs -d '{"url": "file:///etc/passwd"}'
 ```
 
 ### 7.2 Fail-Secure Authentication
-Verify that the server blocks all requests if an API key is configured but not provided:
+Verify that the server refuses to start without a key, and blocks routes if bypassed incorrectly:
 
 ```bash
-# 1. Start server with GOST_API_KEY
-# 2. Try accessing sensitive routes without X-API-Key header
+# 1. Attempt to start without a key (Should FAIL)
+./gostd
+# Expected: FATAL: GOST_API_KEY is not set.
+
+# 2. Start with insecure flag
+./gostd -insecure
+# Expected: WARNING: RUNNING IN INSECURE MODE...
+
+# 3. Start with key and verify block
+export GOST_API_KEY=test
+./gostd
 curl -i http://localhost:8080/v1/jobs
 # Expected: 401 Unauthorized
 ```

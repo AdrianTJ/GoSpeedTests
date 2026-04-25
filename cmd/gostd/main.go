@@ -2,8 +2,9 @@ package main
 
 import (
 	"flag"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 
 	"github.com/AdrianTJ/gospeedtest/internal/api"
 	"github.com/AdrianTJ/gospeedtest/internal/config"
@@ -18,8 +19,11 @@ func main() {
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		slog.Error("Failed to load config", "error", err)
+		os.Exit(1)
 	}
+
+	config.SetupLogger(cfg.LogLevel)
 
 	// CLI flag overrides config file/env
 	if *insecurePtr {
@@ -27,14 +31,15 @@ func main() {
 	}
 
 	if cfg.APIKey == "" && !cfg.AllowInsecure {
-		log.Fatal("FATAL: GOST_API_KEY is not set. For security, the server will not start without a key. To bypass this for local testing, use the -insecure flag or set GOST_ALLOW_INSECURE=true.")
+		slog.Error("FATAL: GOST_API_KEY is not set. For security, the server will not start without a key. To bypass this for local testing, use the -insecure flag or set GOST_ALLOW_INSECURE=true.")
+		os.Exit(1)
 	}
 
 	if cfg.AllowInsecure && cfg.APIKey == "" {
-		log.Println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-		log.Println("WARNING: RUNNING IN INSECURE MODE WITHOUT AN API KEY.")
-		log.Println("THIS IS ONLY RECOMMENDED FOR LOCAL DEVELOPMENT.")
-		log.Println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+		slog.Warn("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+		slog.Warn("WARNING: RUNNING IN INSECURE MODE WITHOUT AN API KEY.")
+		slog.Warn("THIS IS ONLY RECOMMENDED FOR LOCAL DEVELOPMENT.")
+		slog.Warn("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 	}
 
 	dbURL := cfg.DBURL
@@ -42,10 +47,11 @@ func main() {
 		dbURL = "./gospeedtest.db"
 	}
 
-	log.Println("Using SQLite backend")
+	slog.Info("Starting GoSpeedTest", "backend", "sqlite", "db_url", dbURL)
 	s, err := store.NewStore(dbURL)
 	if err != nil {
-		log.Fatalf("Failed to initialize store: %v", err)
+		slog.Error("Failed to initialize store", "error", err)
+		os.Exit(1)
 	}
 	defer s.Close()
 
@@ -55,8 +61,9 @@ func main() {
 
 	srv := api.NewServer(m, s, cfg.APIKey, cfg.AllowInsecure)
 
-	log.Printf("Starting gostd API server on %s", cfg.ListenAddr)
+	slog.Info("API server starting", "addr", cfg.ListenAddr)
 	if err := http.ListenAndServe(cfg.ListenAddr, srv.Routes()); err != nil {
-		log.Fatalf("Server failed: %v", err)
+		slog.Error("Server failed", "error", err)
+		os.Exit(1)
 	}
 }

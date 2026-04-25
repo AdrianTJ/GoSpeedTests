@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"time"
 
@@ -12,6 +12,7 @@ import (
 	"github.com/AdrianTJ/gospeedtest/internal/collector/browser"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/vitals"
+	"github.com/AdrianTJ/gospeedtest/internal/config"
 	"github.com/AdrianTJ/gospeedtest/internal/report"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
 	"github.com/AdrianTJ/gospeedtest/internal/validator"
@@ -33,6 +34,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	config.SetupLogger("info")
+
 	if err := validator.ValidateURL(*urlPtr); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -43,7 +46,8 @@ func main() {
 		var err error
 		s, err = store.NewStore(*dbPtr)
 		if err != nil {
-			log.Fatalf("Failed to initialize store: %v", err)
+			slog.Error("Failed to initialize store", "error", err)
+			os.Exit(1)
 		}
 		defer s.Close()
 	}
@@ -71,7 +75,7 @@ func main() {
 			browserRes, err := browser.Collect(bCtx, *urlPtr)
 			bCancel()
 			if err != nil {
-				log.Printf("Browser collection failed: %v", err)
+				slog.Error("Browser collection failed", "error", err)
 			}
 			res.Browser = browserRes
 		}
@@ -80,7 +84,7 @@ func main() {
 			vitalsRes, err := vitals.Collect(vCtx, *urlPtr)
 			vCancel()
 			if err != nil {
-				log.Printf("Vitals collection failed: %v", err)
+				slog.Error("Vitals collection failed", "error", err)
 			}
 			res.Vitals = vitalsRes
 		}

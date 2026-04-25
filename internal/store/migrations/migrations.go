@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 )
 
 type Migration struct {
@@ -30,7 +30,7 @@ func Run(ctx context.Context, db *sql.DB, migrations []Migration) error {
 	// 3. Run pending migrations
 	for _, m := range migrations {
 		if m.Version > currentVersion {
-			log.Printf("Applying migration version %d", m.Version)
+			slog.Info("Applying migration", "version", m.Version)
 			
 			tx, err := db.BeginTx(ctx, nil)
 			if err != nil {

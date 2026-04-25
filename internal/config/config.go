@@ -1,18 +1,20 @@
 package config
 
 import (
+	"log/slog"
 	"os"
 	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	ListenAddr string `yaml:"listen_addr"`
-	DBURL      string `yaml:"database_url"`
-	Workers    int    `yaml:"workers"`
-	QueueDepth int    `yaml:"queue_depth"`
-	TimeoutS   int    `yaml:"timeout_s"`
+	ListenAddr    string `yaml:"listen_addr"`
+	DBURL         string `yaml:"database_url"`
+	Workers       int    `yaml:"workers"`
+	QueueDepth    int    `yaml:"queue_depth"`
+	TimeoutS      int    `yaml:"timeout_s"`
 	APIKey        string `yaml:"api_key"`
 	LogLevel      string `yaml:"log_level"`
 	AllowInsecure bool   `yaml:"allow_insecure"`
@@ -73,4 +75,25 @@ func Load(filePath string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// SetupLogger initializes the global slog logger based on the configuration.
+func SetupLogger(levelStr string) {
+	var level slog.Level
+	switch strings.ToLower(levelStr) {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
+	}
+
+	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: level,
+	})
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
 }

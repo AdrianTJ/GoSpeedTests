@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -109,12 +109,12 @@ func (m *Manager) CancelJob(ctx context.Context, id string) error {
 
 func (m *Manager) worker(id int) {
 	defer m.wg.Done()
-	log.Printf("Worker %d started", id)
+	slog.Info("Worker started", "worker_id", id)
 
 	for {
 		select {
 		case <-m.ctx.Done():
-			log.Printf("Worker %d shutting down", id)
+			slog.Info("Worker shutting down", "worker_id", id)
 			return
 		case job, ok := <-m.jobQueue:
 			if !ok {
@@ -128,7 +128,7 @@ func (m *Manager) worker(id int) {
 			m.mu.Unlock()
 
 			if !pending {
-				log.Printf("Worker skipping cancelled job %s", job.ID)
+				slog.Info("Worker skipping cancelled job", "job_id", job.ID)
 				continue
 			}
 
@@ -136,7 +136,7 @@ func (m *Manager) worker(id int) {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						log.Printf("Worker %d panicked while processing job %s: %v", id, job.ID, r)
+						slog.Error("Worker panicked while processing job", "worker_id", id, "job_id", job.ID, "recover", r)
 						errStr := fmt.Sprintf("internal worker panic: %v", r)
 						m.store.UpdateJobStatus(m.ctx, job.ID, store.StatusFailed, &errStr)
 					}
@@ -148,11 +148,11 @@ func (m *Manager) worker(id int) {
 }
 
 func (m *Manager) processJob(job *store.Job) {
-	log.Printf("Worker processing job %s for %s", job.ID, job.URL)
+	slog.Info("Worker processing job", "job_id", job.ID, "url", job.URL)
 
 	// Update status to RUNNING
 	if err := m.store.UpdateJobStatus(m.ctx, job.ID, store.StatusRunning, nil); err != nil {
-		log.Printf("Failed to update job %s to RUNNING: %v", job.ID, err)
+		slog.Error("Failed to update job status to RUNNING", "job_id", job.ID, "error", err)
 		return
 	}
 
@@ -225,7 +225,7 @@ func (m *Manager) processJob(job *store.Job) {
 		}
 
 		if err := m.store.SaveResult(m.ctx, resultRecord); err != nil {
-			log.Printf("Failed to save result for job %s run %d: %v", job.ID, i, err)
+			slog.Error("Failed to save result", "job_id", job.ID, "run_index", i, "error", err)
 		}
 	}
 
@@ -245,7 +245,7 @@ func (m *Manager) processJob(job *store.Job) {
 	}
 
 	if err := m.store.UpdateJobStatus(m.ctx, job.ID, status, errStr); err != nil {
-		log.Printf("Failed to update job %s to %s: %v", job.ID, status, err)
+		slog.Error("Failed to update job status", "job_id", job.ID, "status", status, "error", err)
 	}
 
 	if job.WebhookURL != "" {
@@ -274,9 +274,9 @@ func (m *Manager) sendWebhook(jobID string) {
 	body, _ := json.Marshal(payload)
 	resp, err := http.Post(job.WebhookURL, "application/json", bytes.NewBuffer(body))
 	if err != nil {
-		log.Printf("Webhook failed for job %s: %v", job.ID, err)
+		slog.Error("Webhook failed", "job_id", job.ID, "error", err)
 		return
 	}
 	defer resp.Body.Close()
-	log.Printf("Webhook sent for job %s, status: %d", job.ID, resp.StatusCode)
+	slog.Info("Webhook sent", "job_id", job.ID, "status_code", resp.StatusCode)
 }
