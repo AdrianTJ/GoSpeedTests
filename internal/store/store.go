@@ -51,6 +51,19 @@ type Result struct {
 	CollectedAt time.Time       `json:"collected_at"`
 }
 
+// WebhookDelivery tracks the state of a webhook notification.
+type WebhookDelivery struct {
+	ID          string    `json:"id"`
+	JobID       string    `json:"job_id"`
+	URL         string    `json:"url"`
+	Payload     []byte    `json:"payload"`
+	Attempts    int       `json:"attempts"`
+	LastAttempt *time.Time `json:"last_attempt,omitempty"`
+	NextAttempt *time.Time `json:"next_attempt,omitempty"`
+	Status      string    `json:"status"` // PENDING, SUCCESS, FAILED
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 // Store defines the interface for persisting jobs and results.
 type Store interface {
 	CreateJob(ctx context.Context, job *Job) error
@@ -61,6 +74,12 @@ type Store interface {
 	GetResultsByJobID(ctx context.Context, jobID string) ([]Result, error)
 	GetHistory(ctx context.Context, url string) (interface{}, error)
 	DeleteJob(ctx context.Context, id string) error
+
+	// Webhooks
+	EnqueueWebhook(ctx context.Context, delivery *WebhookDelivery) error
+	GetPendingWebhooks(ctx context.Context, limit int) ([]WebhookDelivery, error)
+	UpdateWebhookStatus(ctx context.Context, id string, status string, attempts int, lastAttempt *time.Time, nextAttempt *time.Time) error
+
 	Close() error
 }
 
@@ -119,6 +138,23 @@ func (s *sqliteStore) initSchema() error {
 		{
 			Version: 2,
 			SQL:     `ALTER TABLE jobs ADD COLUMN webhook_url TEXT`,
+		},
+		{
+			Version: 3,
+			SQL: `
+			CREATE TABLE IF NOT EXISTS webhook_deliveries (
+				id           TEXT        PRIMARY KEY,
+				job_id       TEXT        NOT NULL,
+				url          TEXT        NOT NULL,
+				payload      BLOB        NOT NULL,
+				attempts     INTEGER     NOT NULL DEFAULT 0,
+				last_attempt DATETIME,
+				next_attempt DATETIME,
+				status       TEXT        NOT NULL DEFAULT 'PENDING',
+				created_at   DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP
+			);
+			CREATE INDEX IF NOT EXISTS idx_webhook_status_next ON webhook_deliveries(status, next_attempt);
+			`,
 		},
 	}
 
@@ -296,6 +332,52 @@ func (s *sqliteStore) GetHistory(ctx context.Context, url string) (interface{}, 
 
 func (s *sqliteStore) DeleteJob(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx, "DELETE FROM jobs WHERE id = ?", id)
+	return err
+}
+
+func (s *sqliteStore) EnqueueWebhook(ctx context.Context, d *WebhookDelivery) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO webhook_deliveries (id, job_id, url, payload, attempts, last_attempt, next_attempt, status, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		d.ID, d.JobID, d.URL, d.Payload, d.Attempts, d.LastAttempt, d.NextAttempt, d.Status, d.CreatedAt)
+	return err
+}
+
+func (s *sqliteStore) GetPendingWebhooks(ctx context.Context, limit int) ([]WebhookDelivery, error) {
+	now := time.Now()
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, job_id, url, payload, attempts, last_attempt, next_attempt, status, created_at
+		 FROM webhook_deliveries 
+		 WHERE status = 'PENDING' AND (next_attempt IS NULL OR next_attempt <= ?)
+		 ORDER BY created_at ASC LIMIT ?`, now, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var deliveries []WebhookDelivery
+	for rows.Next() {
+		var d WebhookDelivery
+		var last, next sql.NullTime
+		err := rows.Scan(&d.ID, &d.JobID, &d.URL, &d.Payload, &d.Attempts, &last, &next, &d.Status, &d.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		if last.Valid {
+			d.LastAttempt = &last.Time
+		}
+		if next.Valid {
+			d.NextAttempt = &next.Time
+		}
+		deliveries = append(deliveries, d)
+	}
+	return deliveries, nil
+}
+
+func (s *sqliteStore) UpdateWebhookStatus(ctx context.Context, id string, status string, attempts int, last *time.Time, next *time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE webhook_deliveries SET status = ?, attempts = ?, last_attempt = ?, next_attempt = ? WHERE id = ?`,
+		status, attempts, last, next, id)
 	return err
 }
 
