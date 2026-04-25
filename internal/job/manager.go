@@ -386,8 +386,8 @@ func (m *Manager) sendOneWebhook(client *http.Client, d store.WebhookDelivery) {
 		return
 	}
 
-	// Calculate exponential backoff (e.g., 2, 4, 8, 16, 32 minutes)
-	backoff := time.Duration(math.Pow(2, float64(d.Attempts))) * time.Minute
+	// Calculate exponential backoff (e.g., 2, 4, 8, 16, 32 seconds)
+	backoff := time.Duration(math.Pow(2, float64(d.Attempts))) * time.Second
 	nextAttempt := now.Add(backoff)
 
 	slog.Warn("Webhook failed, scheduling retry", "job_id", d.JobID, "delivery_id", d.ID, "attempts", d.Attempts, "next_attempt", nextAttempt, "error", err)

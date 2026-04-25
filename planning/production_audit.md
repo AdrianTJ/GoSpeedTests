@@ -46,10 +46,10 @@ This document contains the findings of a senior software engineering audit perfo
 **Issue:** **Buggy Failure Reporting.**  
 **Fix:** Tracked success counts per run. Marked job as `FAILED` only if 0 runs succeeded, and introduced a `PARTIAL` status for partial successes.  
 
-**[SEVERITY: Medium]**  
-**File:** `internal/job/manager.go`  
+**[SEVERITY: Medium] [STATUS: RESOLVED - 2026-04-25]**  
+**File:** `internal/job/manager.go`, `internal/store/store.go`  
 **Issue:** **Unreliable Webhooks.** Webhooks are "fire-and-forget" with no retry logic.  
-**Recommendation:** Implement a simple retry queue with exponential backoff for webhook deliveries.
+**Fix:** Implemented a persistent webhook delivery queue with exponential backoff. Failed attempts are rescheduled for retry up to 5 times.
 
 ### 2.3 Performance & Scalability
 

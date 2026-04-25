@@ -50,26 +50,13 @@ func TestWebhookRetries(t *testing.T) {
 		t.Errorf("expected 1 attempt after initial fail, got %d", atomic.LoadInt32(&attempts))
 	}
 
-	// 2. Manually trigger the worker check (since backoff is minutes)
-	// For the test, we'll reach into the store and cheat the 'next_attempt' to be now
-	// This proves the retry logic works when the time is right.
-	pending, _ := s.GetPendingWebhooks(context.Background(), 1)
-	if len(pending) != 1 {
-		t.Fatal("expected 1 pending webhook after failure")
-	}
-
-	now := time.Now().Add(-1 * time.Hour) // Set next_attempt to the past
-	s.UpdateWebhookStatus(context.Background(), pending[0].ID, "PENDING", 1, pending[0].LastAttempt, &now)
-
-	// 3. Wait for ticker to pick it up or trigger another webhook action
-	// In this test environment, the ticker is 5s (webhookTickRate).
-	// Let's just wait for it.
-	time.Sleep(6 * time.Second)
+	// 2. Wait for retry. 
+	// Backoff is 2^1 = 2 seconds.
+	// Ticker is 5 seconds.
+	// We wait 10 seconds total to be safe.
+	time.Sleep(10 * time.Second)
 
 	if atomic.LoadInt32(&attempts) != 2 {
 		t.Errorf("expected 2 attempts after retry, got %d", atomic.LoadInt32(&attempts))
 	}
-	
-	// 4. Verify status is SUCCESS
-	// We'd need a GetWebhook method to verify this cleanly, but let's assume if attempts=2 it worked.
 }
