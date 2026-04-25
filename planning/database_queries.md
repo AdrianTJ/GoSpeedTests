@@ -69,7 +69,23 @@ DELETE FROM jobs;
 
 ---
 
-## 6. Performance Optimization
+## 6. Webhook Delivery Status
+Inspect the status of recent webhook notifications, including retry counts and errors.
+
+```sql
+SELECT 
+    job_id, 
+    status, 
+    attempts, 
+    last_attempt, 
+    next_attempt 
+FROM webhook_deliveries 
+ORDER BY created_at DESC;
+```
+
+---
+
+## 7. Performance Optimization
 
 ### Recommended: SQLite Generated Columns
 Create a virtual or stored generated column and index it for fast aggregations on TTFB.

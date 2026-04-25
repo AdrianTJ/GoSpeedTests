@@ -68,5 +68,12 @@ This document tracks the key architectural and design decisions made during the 
 - **Rationale:** JSON-structured logs are industry standard for production observability, allowing for easier filtering, aggregation, and alerting in log management systems.
 - **Outcome:** Improved operational visibility.
 
+## 14. Persistent Webhook Retries
+**Decision:** Implement a persistent delivery queue for webhooks with exponential backoff.
+- **Rationale:** Webhooks are often delivered to external systems that may experience transient downtime. A "fire-and-forget" model leads to data loss. Persistence ensures that notifications are eventually delivered even if the daemon restarts.
+- **Implementation:** Added `webhook_deliveries` table and a dedicated background worker in `internal/job/Manager`.
+- **Outcome:** High-reliability notification delivery.
+
 ---
-*Last Updated: April 24, 2026*
+*Last Updated: April 25, 2026*
+

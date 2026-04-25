@@ -25,8 +25,9 @@
 - [x] SSRF Protection (URL Validation).
 - [x] Worker panic recovery and Partial success reporting.
 - [x] Interactive API Documentation (Swagger UI).
-- [x] Comprehensive test suite (Migration runner, concurrency, Auth, Partial logic).
+- [x] Comprehensive test suite (Migration runner, concurrency, Auth, Partial logic, Webhooks).
 - [x] Structured Logging (slog) with JSON output.
+- [x] Persistent Webhook Retries with exponential backoff.
 
 ### Pending
 - [ ] Lighthouse integration.
@@ -39,5 +40,6 @@
 1. **Database Optimization**
    - **Plan:** Leverage SQLite generated columns for metrics to improve history query performance.
 
-2. **Production Audit Cleanup**
-   - **Plan:** Implement retry logic for webhooks to handle transient failures.
+2. **Maintenance**
+   - Monitor for ChromeDP version updates or CDP protocol changes.
+   - Refine INP approximation based on user feedback.
