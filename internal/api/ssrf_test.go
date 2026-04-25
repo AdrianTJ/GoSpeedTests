@@ -24,7 +24,7 @@ func TestSSRFPrevention(t *testing.T) {
 	m.Start()
 	defer m.Stop()
 
-	srv := NewServer(m, s, "")
+	srv := NewServer(m, s, "", true)
 	mux := srv.Routes()
 
 	tests := []struct {

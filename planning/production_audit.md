@@ -29,10 +29,10 @@ This document contains the findings of a senior software engineering audit perfo
 **Issue:** **Missing URL Validation (SSRF Risk).**  
 **Fix:** Implemented `validator.ValidateURL` which enforces `http/https` schemes and blocks private/loopback IP ranges. Added `GOST_ALLOW_PRIVATE_IPS` environment variable for legitimate internal testing.  
 
-**[SEVERITY: Medium]**  
-**File:** `internal/api/server.go`  
-**Issue:** **Insecure Default Authentication.** If `GOST_API_KEY` is not set, the middleware allows all requests.  
-**Recommendation:** Fail-secure. If an API key is not provided in configuration, the server should refuse to start or block all sensitive routes by default.
+**[SEVERITY: Medium] [STATUS: RESOLVED - 2026-04-24]**  
+**File:** `internal/api/server.go`, `cmd/gostd/main.go`  
+**Issue:** **Insecure Default Authentication.**  
+**Fix:** The server now refuses to start if `GOST_API_KEY` is not set. A new `-insecure` flag (or `GOST_ALLOW_INSECURE=true`) is required to explicitly bypass this for local development. Middleware blocks protected routes by default if neither a key nor insecure mode is configured.
 
 ### 2.2 Error Handling & Resilience
 

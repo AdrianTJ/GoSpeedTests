@@ -13,8 +13,9 @@ type Config struct {
 	Workers    int    `yaml:"workers"`
 	QueueDepth int    `yaml:"queue_depth"`
 	TimeoutS   int    `yaml:"timeout_s"`
-	APIKey     string `yaml:"api_key"`
-	LogLevel   string `yaml:"log_level"`
+	APIKey        string `yaml:"api_key"`
+	LogLevel      string `yaml:"log_level"`
+	AllowInsecure bool   `yaml:"allow_insecure"`
 }
 
 // Default values
@@ -66,6 +67,9 @@ func Load(filePath string) (*Config, error) {
 		if n, err := strconv.Atoi(val); err == nil {
 			cfg.TimeoutS = n
 		}
+	}
+	if val := os.Getenv("GOST_ALLOW_INSECURE"); val == "true" {
+		cfg.AllowInsecure = true
 	}
 
 	return cfg, nil

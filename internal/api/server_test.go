@@ -26,7 +26,7 @@ func TestAPIServer(t *testing.T) {
 	m.Start()
 	defer m.Stop()
 
-	srv := NewServer(m, s, "") // Use empty API key for tests
+	srv := NewServer(m, s, "", true) // Use insecure mode for base tests
 	mux := srv.Routes()
 
 	// 1. Test POST /v1/jobs
@@ -74,7 +74,7 @@ func TestAPIServer(t *testing.T) {
 	}
 
 	// 3. Test Authentication (with an API key)
-	srvWithAuth := NewServer(m, s, "secret-key")
+	srvWithAuth := NewServer(m, s, "secret-key", false)
 	muxWithAuth := srvWithAuth.Routes()
 
 	// 3a. Unauthorized request

@@ -45,14 +45,16 @@ Perform a full performance analysis on a URL:
 ```
 
 ### API Mode
-**1. Start the server:**
+**1. Start the server (Requires API Key by default):**
 ```bash
+export GOST_API_KEY="your-secret-key"
 ./gostd
 ```
+*Note: To run without a key for local testing, use `./gostd -insecure`.*
 
 **2. Submit a test job:**
 ```bash
-curl -X POST http://localhost:8080/v1/jobs -d '{"url": "https://web.dev"}'
+curl -H "X-API-Key: your-secret-key" -X POST http://localhost:8080/v1/jobs -d '{"url": "https://web.dev"}'
 ```
 
 ---

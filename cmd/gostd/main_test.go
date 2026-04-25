@@ -14,6 +14,8 @@ func TestGostdStartup(t *testing.T) {
 	os.Setenv("GOST_LISTEN_ADDR", "localhost:9090")
 	os.Setenv("DATABASE_URL", ":memory:") // Use in-memory SQLite for testing
 
+	// Mock command line args
+	os.Args = []string{"gostd", "-insecure"}
 	go func() {
 		main()
 	}()

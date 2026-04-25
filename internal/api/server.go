@@ -12,23 +12,29 @@ import (
 )
 
 type Server struct {
-	manager *job.Manager
-	store   store.Store
-	apiKey  string
+	manager       *job.Manager
+	store         store.Store
+	apiKey        string
+	allowInsecure bool
 }
 
-func NewServer(m *job.Manager, s store.Store, apiKey string) *Server {
+func NewServer(m *job.Manager, s store.Store, apiKey string, allowInsecure bool) *Server {
 	return &Server{
-		manager: m,
-		store:   s,
-		apiKey:  apiKey,
+		manager:       m,
+		store:         s,
+		apiKey:        apiKey,
+		allowInsecure: allowInsecure,
 	}
 }
 
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.apiKey == "" {
-			next.ServeHTTP(w, r)
+			if s.allowInsecure {
+				next.ServeHTTP(w, r)
+				return
+			}
+			http.Error(w, "server misconfigured: GOST_API_KEY is required for this route (or set GOST_ALLOW_INSECURE=true for local testing)", http.StatusInternalServerError)
 			return
 		}
 
