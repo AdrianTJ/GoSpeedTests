@@ -202,7 +202,7 @@ Operational visibility is provided via Go's `log/slog` library.
 
 ## 10. Open Questions & Future Work
 
-- **Lighthouse integration** — optionally delegate Core Web Vitals measurement to Google Lighthouse CLI for higher-fidelity results
+- [x] **Lighthouse integration** — optionally delegate Core Web Vitals measurement to Google PageSpeed Insights API for higher-fidelity results
 - **Distributed workers** — support remote worker nodes communicating with a central `gostd` coordinator
 - **Webhook Retries** — implement exponential backoff for failed result delivery notifications
 

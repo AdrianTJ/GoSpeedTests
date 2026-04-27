@@ -74,6 +74,11 @@ This document tracks the key architectural and design decisions made during the 
 - **Implementation:** Added `webhook_deliveries` table and a dedicated background worker in `internal/job/Manager`.
 - **Outcome:** High-reliability notification delivery.
 
+## 15. Lighthouse Integration: PageSpeed Insights (PSI) API
+**Decision:** Use the Google PageSpeed Insights API instead of a local Lighthouse CLI.
+- **Rationale:** A local Lighthouse CLI requires a Node.js environment and can be resource-intensive to run alongside the Go application. The PSI API provides high-fidelity, standardized results without requiring additional local dependencies or significantly increasing the resource footprint of the `gostd` daemon.
+- **Outcome:** Simplified deployment and lower local resource usage.
+
 ---
-*Last Updated: April 25, 2026*
+*Last Updated: April 27, 2026*
 
