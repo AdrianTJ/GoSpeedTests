@@ -90,11 +90,15 @@ GoSpeedTest is structured as a monorepo containing multiple cooperating programs
                                 v
                        [ internal/collector ]
                                 |
-                   +------------+------------+
-                   |            |            |
-             [ Network ]    [ Browser ]   [ Vitals ]
-                   |            |            |
-             (httptrace)    (ChromeDP)    (ChromeDP)
+             +------------------+------------------+
+             |                  |                  |
+       [ Network ]          [ Browser ]        [ Vitals ]
+             |                  |                  |
+       (httptrace)          (ChromeDP)         (ChromeDP)
+                                |
+                        [ Lighthouse (PSI) ]
+                                |
+                          (Google API)
 ```
 
 ### 3.3 Job State Machine
@@ -158,6 +162,7 @@ GoSpeedTest uses **SQLite** as its exclusive storage engine. SQLite was chosen f
 | `GOST_LISTEN_ADDR` | `-addr` | `:8080` | Address to listen on |
 | `DATABASE_URL` | `-db` | `gospeedtest.db` | Path to SQLite database |
 | `GOST_API_KEY` | `-key` | *(none)* | API Key for auth (REQUIRED) |
+| `GOST_GOOGLE_API_KEY` | `-gkey` | *(none)* | Google API Key for PageSpeed Insights |
 | `GOST_WORKERS` | `-workers` | `4` | Number of concurrent workers |
 | `GOST_LOG_LEVEL` | `-log` | `info` | debug, info, warn, error |
 | `GOST_ALLOW_INSECURE` | `-insecure` | `false` | Bypass API Key requirement |
