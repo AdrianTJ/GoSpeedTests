@@ -32,6 +32,7 @@ type Manager struct {
 	jobQueue     chan *store.Job
 	webhookChan  chan string // deliveryID
 	workerCount  int
+	googleAPIKey string
 	wg           sync.WaitGroup
 	ctx          context.Context
 	cancel       context.CancelFunc
@@ -40,17 +41,18 @@ type Manager struct {
 }
 
 // NewManager creates a new job manager.
-func NewManager(s store.Store, workerCount int, queueDepth int) *Manager {
+func NewManager(s store.Store, workerCount int, queueDepth int, googleAPIKey string) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Manager{
-		store:       s,
-		chrome:      chrome.NewManager(),
-		jobQueue:    make(chan *store.Job, queueDepth),
-		webhookChan: make(chan string, 100),
-		workerCount: workerCount,
-		ctx:         ctx,
-		cancel:      cancel,
-		pendingJobs: make(map[string]struct{}),
+		store:        s,
+		chrome:       chrome.NewManager(),
+		jobQueue:     make(chan *store.Job, queueDepth),
+		webhookChan:  make(chan string, 100),
+		workerCount:  workerCount,
+		googleAPIKey: googleAPIKey,
+		ctx:          ctx,
+		cancel:       cancel,
+		pendingJobs:  make(map[string]struct{}),
 	}
 }
 

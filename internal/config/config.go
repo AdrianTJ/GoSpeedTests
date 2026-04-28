@@ -16,6 +16,7 @@ type Config struct {
 	QueueDepth    int    `yaml:"queue_depth"`
 	TimeoutS      int    `yaml:"timeout_s"`
 	APIKey        string `yaml:"api_key"`
+	GoogleAPIKey  string `yaml:"google_api_key"`
 	LogLevel      string `yaml:"log_level"`
 	AllowInsecure bool   `yaml:"allow_insecure"`
 }
@@ -54,6 +55,9 @@ func Load(filePath string) (*Config, error) {
 	}
 	if val := os.Getenv("GOST_API_KEY"); val != "" {
 		cfg.APIKey = val
+	}
+	if val := os.Getenv("GOST_GOOGLE_API_KEY"); val != "" {
+		cfg.GoogleAPIKey = val
 	}
 	if val := os.Getenv("GOST_WORKERS"); val != "" {
 		if n, err := strconv.Atoi(val); err == nil {

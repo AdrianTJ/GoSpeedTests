@@ -48,6 +48,7 @@ type Result struct {
 	Network     *network.Result `json:"network,omitempty"`
 	Browser     interface{}     `json:"browser,omitempty"`
 	Vitals      interface{}     `json:"vitals,omitempty"`
+	Lighthouse  interface{}     `json:"lighthouse,omitempty"`
 	CollectedAt time.Time       `json:"collected_at"`
 }
 
@@ -156,6 +157,10 @@ func (s *sqliteStore) initSchema() error {
 			CREATE INDEX IF NOT EXISTS idx_webhook_status_next ON webhook_deliveries(status, next_attempt);
 			`,
 		},
+		{
+			Version: 4,
+			SQL:     `ALTER TABLE results ADD COLUMN lighthouse TEXT`,
+		},
 	}
 
 	return migrations.Run(context.Background(), s.db, m)
@@ -262,17 +267,18 @@ func (s *sqliteStore) SaveResult(ctx context.Context, result *Result) error {
 	networkJSON, _ := json.Marshal(result.Network)
 	browserJSON, _ := json.Marshal(result.Browser)
 	vitalsJSON, _ := json.Marshal(result.Vitals)
+	lighthouseJSON, _ := json.Marshal(result.Lighthouse)
 
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO results (id, job_id, run_index, network, browser, vitals, collected_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		result.ID, result.JobID, result.RunIndex, string(networkJSON), string(browserJSON), string(vitalsJSON), result.CollectedAt)
+		`INSERT INTO results (id, job_id, run_index, network, browser, vitals, lighthouse, collected_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		result.ID, result.JobID, result.RunIndex, string(networkJSON), string(browserJSON), string(vitalsJSON), string(lighthouseJSON), result.CollectedAt)
 	return err
 }
 
 func (s *sqliteStore) GetResultsByJobID(ctx context.Context, jobID string) ([]Result, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, job_id, run_index, network, browser, vitals, collected_at
+		`SELECT id, job_id, run_index, network, browser, vitals, lighthouse, collected_at
 		 FROM results WHERE job_id = ? ORDER BY run_index ASC`, jobID)
 	if err != nil {
 		return nil, err
@@ -282,9 +288,9 @@ func (s *sqliteStore) GetResultsByJobID(ctx context.Context, jobID string) ([]Re
 	var results []Result
 	for rows.Next() {
 		var res Result
-		var networkJSON, browserJSON, vitalsJSON sql.NullString
+		var networkJSON, browserJSON, vitalsJSON, lighthouseJSON sql.NullString
 
-		err := rows.Scan(&res.ID, &res.JobID, &res.RunIndex, &networkJSON, &browserJSON, &vitalsJSON, &res.CollectedAt)
+		err := rows.Scan(&res.ID, &res.JobID, &res.RunIndex, &networkJSON, &browserJSON, &vitalsJSON, &lighthouseJSON, &res.CollectedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -297,6 +303,9 @@ func (s *sqliteStore) GetResultsByJobID(ctx context.Context, jobID string) ([]Re
 		}
 		if vitalsJSON.Valid {
 			_ = json.Unmarshal([]byte(vitalsJSON.String), &res.Vitals)
+		}
+		if lighthouseJSON.Valid {
+			_ = json.Unmarshal([]byte(lighthouseJSON.String), &res.Lighthouse)
 		}
 
 		results = append(results, res)
