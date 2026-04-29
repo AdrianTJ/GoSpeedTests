@@ -13,6 +13,7 @@ import (
 
 	"github.com/AdrianTJ/gospeedtest/internal/chrome"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/browser"
+	"github.com/AdrianTJ/gospeedtest/internal/collector/lighthouse"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/vitals"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
@@ -230,6 +231,17 @@ func (m *Manager) processJob(job *store.Job) {
 				runFailed = true
 			} else {
 				resultRecord.Vitals = vitalsRes
+			}
+		}
+
+		// 4. Lighthouse Tier
+		if hasTier("lighthouse") {
+			lhRes, err := lighthouse.Collect(m.ctx, job.URL, m.googleAPIKey)
+			if err != nil {
+				lastErr = err
+				runFailed = true
+			} else {
+				resultRecord.Lighthouse = lhRes
 			}
 		}
 

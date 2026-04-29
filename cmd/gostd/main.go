@@ -55,7 +55,7 @@ func main() {
 	}
 	defer s.Close()
 
-	m := job.NewManager(s, cfg.Workers, cfg.QueueDepth)
+	m := job.NewManager(s, cfg.Workers, cfg.QueueDepth, cfg.GoogleAPIKey)
 	m.Start()
 	defer m.Stop()
 

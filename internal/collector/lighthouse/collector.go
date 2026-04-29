@@ -20,7 +20,12 @@ type Result struct {
 	LighthouseVer  string  `json:"lighthouse_version"`
 }
 
-const psiEndpoint = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
+var psiEndpoint = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
+
+// SetEndpoint overrides the PSI API endpoint (used for testing).
+func SetEndpoint(endpoint string) {
+	psiEndpoint = endpoint
+}
 
 // Collect performs a Lighthouse analysis via the PageSpeed Insights API.
 func Collect(ctx context.Context, targetURL string, apiKey string) (*Result, error) {

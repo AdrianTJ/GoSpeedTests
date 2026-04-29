@@ -10,6 +10,7 @@ import (
 
 	"github.com/AdrianTJ/gospeedtest/internal/chrome"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/browser"
+	"github.com/AdrianTJ/gospeedtest/internal/collector/lighthouse"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/vitals"
 	"github.com/AdrianTJ/gospeedtest/internal/config"
@@ -21,11 +22,12 @@ import (
 
 func main() {
 	urlPtr := flag.String("u", "", "URL to test (required)")
-	tierPtr := flag.String("t", "all", "Tier to run: network, browser, vitals, all")
+	tierPtr := flag.String("t", "all", "Tier to run: network, browser, vitals, lighthouse, all")
 	runsPtr := flag.Int("n", 1, "Number of runs to perform")
 	formatPtr := flag.String("f", "text", "Output format: json, text, csv")
 	dbPtr := flag.String("db", "", "Optional SQLite path to persist results")
 	timeoutPtr := flag.Int("timeout", 60, "Timeout in seconds per run")
+	gkeyPtr := flag.String("gkey", os.Getenv("GOST_GOOGLE_API_KEY"), "Google API Key for Lighthouse (optional)")
 	flag.Parse()
 
 	if *urlPtr == "" {
@@ -88,6 +90,13 @@ func main() {
 			}
 			res.Vitals = vitalsRes
 		}
+		if tier == "all" || tier == "lighthouse" {
+			lhRes, err := lighthouse.Collect(ctx, *urlPtr, *gkeyPtr)
+			if err != nil {
+				slog.Error("Lighthouse collection failed", "error", err)
+			}
+			res.Lighthouse = lhRes
+		}
 		cancel()
 		summaries = append(summaries, res)
 
@@ -100,7 +109,7 @@ func main() {
 			})
 			s.SaveResult(context.Background(), &store.Result{
 				ID: "res_" + uuid.New().String()[:8], JobID: jobID, RunIndex: i,
-				Network: res.Network, CollectedAt: time.Now(),
+				Network: res.Network, Lighthouse: res.Lighthouse, CollectedAt: time.Now(),
 			})
 		}
 	}
