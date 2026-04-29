@@ -93,7 +93,7 @@ func TestJobManager_QueueFull(t *testing.T) {
 	s, _ := store.NewStore(filepath.Join(tmpDir, "test.db"))
 
 	// Create manager with 0 workers so queue stays full
-	m := NewManager(s, 0, 1)
+	m := NewManager(s, 0, 1, "")
 
 	ctx := context.Background()
 	_, err := m.Submit(ctx, "http://example.com", []string{"network"}, 1, "")
@@ -111,7 +111,7 @@ func TestJobManager_CancelNonExistent(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "job-cancel-test")
 	defer os.RemoveAll(tmpDir)
 	s, _ := store.NewStore(filepath.Join(tmpDir, "test.db"))
-	m := NewManager(s, 1, 1)
+	m := NewManager(s, 1, 1, "")
 
 	err := m.CancelJob(context.Background(), "non-existent")
 	if err == nil {

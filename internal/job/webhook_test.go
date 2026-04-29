@@ -20,7 +20,7 @@ func TestWebhookRetries(t *testing.T) {
 	defer s.Close()
 
 	// 1 worker, short tick rate for testing
-	m := NewManager(s, 1, 10)
+	m := NewManager(s, 1, 10, "")
 	m.Start()
 	defer m.Stop()
 

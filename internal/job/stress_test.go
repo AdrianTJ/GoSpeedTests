@@ -25,7 +25,7 @@ func TestBrowserConcurrencyStress(t *testing.T) {
 	defer s.Close()
 
 	// 3 workers, but 10 jobs
-	m := NewManager(s, 3, 20)
+	m := NewManager(s, 3, 20, "")
 	m.Start()
 	defer m.Stop()
 

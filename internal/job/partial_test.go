@@ -19,7 +19,7 @@ func TestJobManager_PartialSuccess(t *testing.T) {
 	s, _ := store.NewStore(filepath.Join(tmpDir, "test.db"))
 	defer s.Close()
 
-	m := NewManager(s, 1, 10)
+	m := NewManager(s, 1, 10, "")
 	m.Start()
 	defer m.Stop()
 

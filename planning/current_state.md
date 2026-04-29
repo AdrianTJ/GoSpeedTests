@@ -28,7 +28,7 @@
 - [x] Comprehensive test suite (Migration runner, concurrency, Auth, Partial logic, Webhooks).
 - [x] Structured Logging (slog) with JSON output.
 - [x] Persistent Webhook Retries with exponential backoff.
-- [ ] Lighthouse integration (In Progress).
+- [x] Lighthouse integration via PageSpeed Insights API.
 
 ### Pending
 - [ ] Distributed workers.
