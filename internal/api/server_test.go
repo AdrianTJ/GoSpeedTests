@@ -22,7 +22,7 @@ func TestAPIServer(t *testing.T) {
 	s, _ := store.NewStore(dbPath)
 	defer s.Close()
 
-	m := job.NewManager(s, 1, 10)
+	m := job.NewManager(s, 1, 10, "")
 	m.Start()
 	defer m.Stop()
 

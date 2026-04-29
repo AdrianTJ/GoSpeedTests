@@ -21,7 +21,7 @@ func TestJobManager(t *testing.T) {
 	defer s.Close()
 
 	// Setup manager
-	m := NewManager(s, 2, 10)
+	m := NewManager(s, 2, 10, "")
 	m.Start()
 	defer m.Stop()
 

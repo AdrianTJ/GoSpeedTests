@@ -17,7 +17,7 @@ func TestAPIServer_FailSecureAuth(t *testing.T) {
 	s, _ := store.NewStore(filepath.Join(tmpDir, "test.db"))
 	defer s.Close()
 
-	m := job.NewManager(s, 1, 10)
+	m := job.NewManager(s, 1, 10, "")
 
 	apiKey := "top-secret"
 	srv := NewServer(m, s, apiKey, false)
@@ -76,7 +76,7 @@ func TestAPIServer_MisconfiguredAuth(t *testing.T) {
 	s, _ := store.NewStore(filepath.Join(tmpDir, "test.db"))
 	defer s.Close()
 
-	m := job.NewManager(s, 1, 10)
+	m := job.NewManager(s, 1, 10, "")
 
 	// No key AND no insecure flag
 	srv := NewServer(m, s, "", false)
