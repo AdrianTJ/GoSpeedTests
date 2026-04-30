@@ -74,6 +74,7 @@ GoSpeedTest follows a strict configuration hierarchy: **Flags > Environment Vari
 
 ## 📖 Documentation
 
+- **[GETTING STARTED GUIDE](GETTING_STARTED.md)** (Start here!)
 - **Interactive API Docs:** Visit `http://localhost:8080/docs` when the server is running to explore the API via Swagger UI.
 - [Technical Design Document](planning/technical_documentation.md)
 - [Testing Guide](planning/testing_guide.md)
