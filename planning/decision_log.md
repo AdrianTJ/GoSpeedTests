@@ -79,6 +79,27 @@ This document tracks the key architectural and design decisions made during the 
 - **Rationale:** A local Lighthouse CLI requires a Node.js environment and can be resource-intensive to run alongside the Go application. The PSI API provides high-fidelity, standardized results without requiring additional local dependencies or significantly increasing the resource footprint of the `gostd` daemon.
 - **Outcome:** Simplified deployment and lower local resource usage.
 
+## 16. Webhook Destination Validation (SSRF Prevention)
+**Decision:** Validate all user-supplied `webhook_url` destinations against local/private network ranges before allowing job submission.
+- **Rationale:** Preventing users from triggering HTTP requests to loopback addresses (`127.0.0.1`), local network zones, or instance metadata services (IMDS) from inside the backend.
+- **Outcome:** Mitigates critical blind SSRF risks in notification delivery.
+
+## 17. Redirect-Aware HTTP Client
+**Decision:** Implement a custom `http.Client` for network testing and webhooks that evaluates redirects at each hop.
+- **Rationale:** Go's default HTTP client follows redirects transparently, allowing an attacker to bypass initial SSRF checks by redirecting from a public endpoint to a private one.
+- **Outcome:** Total mitigation of HTTP redirect SSRF bypasses.
+
+## 18. Constant-Time Authentication Comparison
+**Decision:** Transition API Key comparison from standard Go string equality (`==`) to constant-time byte comparisons (`subtle.ConstantTimeCompare`).
+- **Rationale:** Standard string comparisons terminate early upon mismatch, exposing a side-channel timing attack that allows attackers to crack API keys character-by-character.
+- **Outcome:** Prevention of authentication timing attacks.
+
+## 19. Run Constraints (DoS Prevention)
+**Decision:** Hard-cap the `runs` field on jobs to a maximum of 10 runs per job request.
+- **Rationale:** Spawning an infinite number of Chrome sessions via a single API call can cause complete server resource exhaustion and worker queue starvation.
+- **Outcome:** Protection against simple Denial of Service (DoS) attacks.
+
 ---
-*Last Updated: April 27, 2026*
+*Last Updated: May 20, 2026*
+
 

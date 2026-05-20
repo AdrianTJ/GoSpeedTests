@@ -175,17 +175,25 @@ GoSpeedTest uses **SQLite** as its exclusive storage engine. SQLite was chosen f
 GoSpeedTest enforces security by default. The API daemon requires a valid `GOST_API_KEY` to be set in the environment or configuration file.
 - If no key is provided, the server will refuse to start.
 - Local testing can bypass this using the `-insecure` CLI flag or `GOST_ALLOW_INSECURE=true`.
+- **Constant-Time Comparison:** Key verification uses standard `crypto/subtle.ConstantTimeCompare` to completely mitigate timing attacks on the API key authentication.
 
 ### 8.2 SSRF Prevention
-All URLs submitted for analysis are validated to prevent Server-Side Request Forgery:
+All user-supplied URLs (both speed test targets and webhook endpoints) are thoroughly validated to prevent Server-Side Request Forgery (SSRF):
 - Only `http` and `https` schemes are permitted.
-- Private, loopback, and restricted IP ranges (e.g., `127.0.0.1`, `10.0.0.0/8`) are blocked by default.
+- Private, loopback, and restricted IP ranges (e.g., `127.0.0.1`, `10.0.0.0/8`, `169.254.169.254`) are blocked by default unless `GOST_ALLOW_PRIVATE_IPS=true` is set.
+- **Redirect Validation:** We use a custom, redirect-aware HTTP Client for fetching network stats and delivering webhooks. This client evaluates the destination address at each hop, ensuring an attacker cannot bypass loopback restrictions by redirecting a public domain target to a private IP.
 
-### 8.3 Structured Logging
+### 8.3 Rate & Run Limits (DoS Protection)
+To protect against Denial of Service (DoS) and excessive CPU/memory consumption via repeated browser runs:
+- The `runs` parameter on job requests is hard-capped to a maximum of 10 runs per job.
+- An internal worker queue manages concurrency to prevent unlimited concurrent Chrome instances from being spawned.
+
+### 8.4 Structured Logging
 Operational visibility is provided via Go's `log/slog` library.
 - **Format:** JSON by default for production environments.
 - **Levels:** Configurable via `log_level`.
 - **Context:** Logs include trace IDs like `job_id` and `worker_id` for easy correlation.
+
 
 ---
 
