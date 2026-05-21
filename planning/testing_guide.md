@@ -189,6 +189,29 @@ curl -i http://localhost:8080/v1/jobs
 # Expected: 401 Unauthorized
 ```
 
+### 7.3 Webhook Redirect SSRF Protection
+Verify that if a public URL is used but returns a redirect to a private IP, it is blocked during background webhook execution:
+
+1. Start `gostd` in insecure mode:
+   ```bash
+   go run cmd/gostd/main.go -insecure
+   ```
+2. Submit a job with a public redirector target that redirects to `http://127.0.0.1:8080/v1/health`.
+3. Observe `gostd` structured output. The job will succeed, but the webhook delivery logs will show a warning:
+   `WARN Webhook failed, scheduling retry ... error="Post \"...\": redirect blocked: URL points to a private or restricted IP address: 127.0.0.1"`
+4. This confirms that the redirect-aware `http.Client` prevents loopback redirect SSRF bypasses.
+
+### 7.4 Runs Parameter Cap DoS Protection
+Verify that requesting too many iterations is rejected at job submission time:
+
+```bash
+# Submit a job with runs = 11 (Should fail with 400 Bad Request)
+curl -i -X POST http://localhost:8080/v1/jobs \
+     -H "Content-Type: application/json" \
+     -d '{"url": "https://example.com", "runs": 11}'
+# Expected response body: runs parameter cannot exceed 10
+```
+
 ---
 
 ## 8. Automated Test Suite
@@ -196,3 +219,4 @@ To run the full suite of internal logic and edge-case tests:
 ```bash
 go test ./... -v
 ```
+

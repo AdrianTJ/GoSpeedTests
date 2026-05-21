@@ -30,26 +30,24 @@
 - [x] Structured Logging (slog) with JSON output.
 - [x] Persistent Webhook Retries with exponential backoff.
 - [x] Lighthouse integration via PageSpeed Insights API.
+- [x] **Security Remediation (Production Blockers)**:
+  - [x] Implement `WebhookURL` validation to prevent blind SSRF at job submission.
+  - [x] Use custom redirect-aware `http.Client` instances to block SSRF bypasses via redirects in both network collector and webhook workers.
+  - [x] Implement constant-time comparison (`subtle.ConstantTimeCompare`) for API Key authentication to prevent timing attacks.
+  - [x] Enforce an upper limit of 10 on the user-supplied `runs` parameter to prevent DoS.
 
 ### Pending
-- [ ] **Security Remediation (Immediate Production Blockers)**:
-  - [ ] Implement `WebhookURL` validation to prevent blind SSRF.
-  - [ ] Use a custom `http.Client` that checks redirects to block SSRF bypasses.
-  - [ ] Implement constant-time comparison (`subtle.ConstantTimeCompare`) for API Key authentication.
-  - [ ] Enforce an upper limit (e.g. max 10) on the user-supplied `runs` parameter to prevent DoS.
 - [ ] Distributed workers.
 
 ---
 
 ## 3. Next Steps (Immediate)
 
-1. **Security Mitigations**
-   - **Plan:** Implement the four critical security remediations from the [Security Review Report](security_review_report.md) in `internal/api` and `internal/collector/network` to ensure production safety.
-
-2. **Database Optimization**
+1. **Database Optimization**
    - **Plan:** Leverage SQLite generated columns for metrics to improve history query performance.
 
-3. **Maintenance**
+2. **Maintenance**
    - Monitor for ChromeDP version updates or CDP protocol changes.
    - Refine INP approximation based on user feedback.
+
 
