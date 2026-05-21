@@ -8,7 +8,10 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"time"
+
+	"github.com/AdrianTJ/gospeedtest/internal/validator"
 )
+
 
 // Result represents the metrics collected at the network level.
 type Result struct {
@@ -52,11 +55,23 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 	}
 
 	start := time.Now()
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("stopped after 10 redirects")
+			}
+			if err := validator.ValidateURL(req.URL.String()); err != nil {
+				return fmt.Errorf("redirect blocked: %w", err)
+			}
+			return nil
+		},
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+
 
 	n, err := io.Copy(io.Discard, resp.Body)
 	if err != nil {

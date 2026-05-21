@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"github.com/AdrianTJ/gospeedtest/internal/store"
 	"github.com/AdrianTJ/gospeedtest/internal/validator"
 )
+
 
 type Server struct {
 	manager       *job.Manager
@@ -39,13 +41,14 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		}
 
 		key := r.Header.Get("X-API-Key")
-		if key != s.apiKey {
+		if subtle.ConstantTimeCompare([]byte(key), []byte(s.apiKey)) != 1 {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
 }
+
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
@@ -134,11 +137,24 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.WebhookURL != "" {
+		if err := validator.ValidateURL(req.WebhookURL); err != nil {
+			http.Error(w, "invalid webhook_url: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
 	if req.Runs <= 0 {
 		req.Runs = 1
 	}
 
+	if req.Runs > 10 {
+		http.Error(w, "runs parameter cannot exceed 10", http.StatusBadRequest)
+		return
+	}
+
 	job, err := s.manager.Submit(r.Context(), req.URL, req.Tiers, req.Runs, req.WebhookURL)
+
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -118,3 +118,84 @@ func TestJobManager_CancelNonExistent(t *testing.T) {
 		t.Error("expected error when cancelling non-existent job, got nil")
 	}
 }
+
+func TestJobManager_WebhookRedirectSSRF(t *testing.T) {
+	// Setup store
+	tmpDir, _ := os.MkdirTemp("", "job-manager-ssrf-test")
+	defer os.RemoveAll(tmpDir)
+	dbPath := filepath.Join(tmpDir, "test.db")
+	s, _ := store.NewStore(dbPath)
+	defer s.Close()
+
+	// Setup manager
+	m := NewManager(s, 2, 10, "")
+	m.Start()
+	defer m.Stop()
+
+	// Setup test target server (loopback address) representing private resource
+	targetHit := make(chan bool, 1)
+	tsTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		targetHit <- true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer tsTarget.Close()
+
+	// Setup redirector server (loopback address) redirecting to the private resource
+	tsRedirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, tsTarget.URL, http.StatusFound)
+	}))
+	defer tsRedirector.Close()
+
+	// Set up main web speed test target
+	tsMain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer tsMain.Close()
+
+	ctx := context.Background()
+
+	// Test case 1: SSRF redirect blocked (GOST_ALLOW_PRIVATE_IPS is false/unset)
+	os.Unsetenv("GOST_ALLOW_PRIVATE_IPS")
+	_, err := m.Submit(ctx, tsMain.URL, []string{"network"}, 1, tsRedirector.URL)
+	if err != nil {
+		t.Fatalf("failed to submit job: %v", err)
+	}
+
+	// Wait to see if target was hit (it should NOT be hit)
+	select {
+	case <-targetHit:
+		t.Error("SSRF vulnerable: Webhook worker followed redirect to private loopback IP!")
+	case <-time.After(1 * time.Second):
+		// Success: redirect was blocked
+	}
+
+	// Test case 2: SSRF redirect allowed (GOST_ALLOW_PRIVATE_IPS is true)
+	os.Setenv("GOST_ALLOW_PRIVATE_IPS", "true")
+	defer os.Unsetenv("GOST_ALLOW_PRIVATE_IPS")
+
+	targetHit2 := make(chan bool, 1)
+	tsTarget2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		targetHit2 <- true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer tsTarget2.Close()
+
+	tsRedirector2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, tsTarget2.URL, http.StatusFound)
+	}))
+	defer tsRedirector2.Close()
+
+	_, err = m.Submit(ctx, tsMain.URL, []string{"network"}, 1, tsRedirector2.URL)
+	if err != nil {
+		t.Fatalf("failed to submit job: %v", err)
+	}
+
+	// Target SHOULD be hit
+	select {
+	case <-targetHit2:
+		// Success: redirect was allowed
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for webhook to redirect and hit target")
+	}
+}
+
