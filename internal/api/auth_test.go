@@ -90,3 +90,38 @@ func TestAPIServer_MisconfiguredAuth(t *testing.T) {
 		t.Errorf("expected 500 for misconfigured auth, got %d", w.Code)
 	}
 }
+
+func TestAPIServer_ConstantTimeAuthBoundaries(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "ct-auth-bounds")
+	defer os.RemoveAll(tmpDir)
+	s, _ := store.NewStore(filepath.Join(tmpDir, "test.db"))
+	defer s.Close()
+
+	m := job.NewManager(s, 1, 10, "")
+	apiKey := "my-secret-key"
+	srv := NewServer(m, s, apiKey, false)
+	mux := srv.Routes()
+
+	// 1. Test empty key header (X-API-Key is "")
+	req := httptest.NewRequest("GET", "/v1/jobs", nil)
+	req.Header.Set("X-API-Key", "")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("empty X-API-Key: expected 401, got %d", w.Code)
+	}
+
+	// 2. Test extremely long key header to verify it doesn't crash subtle.ConstantTimeCompare
+	longKey := make([]byte, 10000)
+	for i := range longKey {
+		longKey[i] = 'a'
+	}
+	req = httptest.NewRequest("GET", "/v1/jobs", nil)
+	req.Header.Set("X-API-Key", string(longKey))
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("extremely long X-API-Key: expected 401, got %d", w.Code)
+	}
+}
+

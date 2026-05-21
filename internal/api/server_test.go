@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"github.com/AdrianTJ/gospeedtest/internal/job"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
 )
+
 
 func TestAPIServer(t *testing.T) {
 	// Setup
@@ -146,3 +148,90 @@ func TestAPIServer(t *testing.T) {
 		t.Errorf("expected 0 tests in history, got %v", history["test_count"])
 	}
 }
+
+func TestAPIServer_WebhookSSRF(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "webhook-ssrf-test")
+	defer os.RemoveAll(tmpDir)
+	s, _ := store.NewStore(filepath.Join(tmpDir, "test.db"))
+	defer s.Close()
+
+	m := job.NewManager(s, 1, 10, "")
+	m.Start()
+	defer m.Stop()
+
+	srv := NewServer(m, s, "", true)
+	mux := srv.Routes()
+
+	tests := []struct {
+		webhookURL string
+		wantCode   int
+	}{
+		{"http://127.0.0.1", http.StatusBadRequest},
+		{"http://localhost", http.StatusBadRequest},
+		{"http://169.254.169.254", http.StatusBadRequest},
+		{"http://10.0.0.1", http.StatusBadRequest},
+		{"https://example.com/webhook", http.StatusAccepted},
+		{"", http.StatusAccepted},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.webhookURL, func(t *testing.T) {
+			reqBody := map[string]interface{}{
+				"url":         "http://example.com",
+				"runs":        1,
+				"webhook_url": tt.webhookURL,
+			}
+			body, _ := json.Marshal(reqBody)
+			req := httptest.NewRequest("POST", "/v1/jobs", bytes.NewReader(body))
+			w := httptest.NewRecorder()
+			mux.ServeHTTP(w, req)
+
+			if w.Code != tt.wantCode {
+				t.Errorf("WebhookURL %q: expected code %d, got %d", tt.webhookURL, tt.wantCode, w.Code)
+			}
+		})
+	}
+}
+
+func TestAPIServer_RunsConstraint(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "runs-constraint-test")
+	defer os.RemoveAll(tmpDir)
+	s, _ := store.NewStore(filepath.Join(tmpDir, "test.db"))
+	defer s.Close()
+
+	m := job.NewManager(s, 1, 10, "")
+	m.Start()
+	defer m.Stop()
+
+	srv := NewServer(m, s, "", true)
+	mux := srv.Routes()
+
+	tests := []struct {
+		runs     int
+		wantCode int
+	}{
+		{0, http.StatusAccepted},
+		{1, http.StatusAccepted},
+		{10, http.StatusAccepted},
+		{11, http.StatusBadRequest},
+		{100, http.StatusBadRequest},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("runs-%d", tt.runs), func(t *testing.T) {
+			reqBody := map[string]interface{}{
+				"url":  "http://example.com",
+				"runs": tt.runs,
+			}
+			body, _ := json.Marshal(reqBody)
+			req := httptest.NewRequest("POST", "/v1/jobs", bytes.NewReader(body))
+			w := httptest.NewRecorder()
+			mux.ServeHTTP(w, req)
+
+			if w.Code != tt.wantCode {
+				t.Errorf("Runs %d: expected code %d, got %d", tt.runs, tt.wantCode, w.Code)
+			}
+		})
+	}
+}
+

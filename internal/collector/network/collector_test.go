@@ -4,9 +4,11 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 )
+
 
 func TestCollect_Success_200(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -76,3 +78,40 @@ func TestCollect_Timeout(t *testing.T) {
 		t.Error("expected timeout error, got nil")
 	}
 }
+
+func TestCollect_SSRFRedirect(t *testing.T) {
+	// Start a local test server that redirects requests.
+	// Since 127.0.0.1 is a loopback IP, standard redirects to it should be blocked by our SSRF client when GOST_ALLOW_PRIVATE_IPS is not "true".
+	
+	tsTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("target content"))
+	}))
+	defer tsTarget.Close()
+
+	tsRedirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, tsTarget.URL, http.StatusFound)
+	}))
+	defer tsRedirector.Close()
+
+	// Under normal operation (GOST_ALLOW_PRIVATE_IPS unset or false), the redirect to target (loopback IP) should be blocked.
+	os.Unsetenv("GOST_ALLOW_PRIVATE_IPS")
+	ctx := context.Background()
+	_, err := Collect(ctx, tsRedirector.URL)
+	if err == nil {
+		t.Error("expected SSRF redirect block error, got nil")
+	}
+
+	// When GOST_ALLOW_PRIVATE_IPS is true, the redirect to loopback target should be allowed.
+	os.Setenv("GOST_ALLOW_PRIVATE_IPS", "true")
+	defer os.Unsetenv("GOST_ALLOW_PRIVATE_IPS")
+	
+	res, err := Collect(ctx, tsRedirector.URL)
+	if err != nil {
+		t.Fatalf("expected redirect to loopback to succeed when GOST_ALLOW_PRIVATE_IPS=true, got error: %v", err)
+	}
+	if res.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 OK, got status %d", res.StatusCode)
+	}
+}
+
