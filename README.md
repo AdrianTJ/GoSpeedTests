@@ -59,6 +59,17 @@ curl -H "X-API-Key: your-secret-key" -X POST http://localhost:8080/v1/jobs -d '{
 
 ---
 
+## 📖 Documentation
+
+- **[GETTING STARTED GUIDE](GETTING_STARTED.md)** (Start here!)
+- **Interactive API Docs:** Visit `http://localhost:8080/docs` when the server is running to explore the API via Swagger UI.
+- [Technical Design Document](planning/technical_documentation.md)
+- [Testing Guide](planning/testing_guide.md)
+- [Architectural Decision Log](planning/decision_log.md)
+- [Database Query Reference](planning/database_queries.md)
+
+---
+
 ## ⚙️ Configuration
 
 GoSpeedTest follows a strict configuration hierarchy: **Flags > Environment Variables > `config.yaml`**.
@@ -69,17 +80,6 @@ GoSpeedTest follows a strict configuration hierarchy: **Flags > Environment Vari
 | `DATABASE_URL` | `gospeedtest.db` | SQLite database path |
 | `GOST_API_KEY` | *(unset)* | API key for authentication |
 | `GOST_WORKERS` | `4` | Number of concurrent workers |
-
----
-
-## 📖 Documentation
-
-- **[GETTING STARTED GUIDE](GETTING_STARTED.md)** (Start here!)
-- **Interactive API Docs:** Visit `http://localhost:8080/docs` when the server is running to explore the API via Swagger UI.
-- [Technical Design Document](planning/technical_documentation.md)
-- [Testing Guide](planning/testing_guide.md)
-- [Architectural Decision Log](planning/decision_log.md)
-- [Database Query Reference](planning/database_queries.md)
 
 ---
 
