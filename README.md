@@ -1,4 +1,4 @@
-# GoSpeedTest
+# Go Speed Test
 
 **GoSpeedTest** is a high-performance, open-source page speed analysis toolkit written in Go. It allows developers and SREs to measure, track, and compare web performance metrics across any URL without vendor lock-in.
 
