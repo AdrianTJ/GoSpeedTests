@@ -184,6 +184,11 @@ func (m *Manager) processJob(job *store.Job) {
 		return false
 	}
 
+	timeout := time.Duration(job.TimeoutS) * time.Second
+	if timeout <= 0 {
+		timeout = 60 * time.Second
+	}
+
 	successCount := 0
 	var lastErr error
 	for i := 1; i <= job.Runs; i++ {
@@ -194,11 +199,14 @@ func (m *Manager) processJob(job *store.Job) {
 			CollectedAt: time.Now(),
 		}
 
+		// Bound each run so a hung target cannot occupy a worker forever.
+		runCtx, runCancel := context.WithTimeout(m.ctx, timeout)
+
 		runFailed := false
 
 		// 1. Network Tier
 		if hasTier("network") {
-			netRes, err := network.Collect(m.ctx, job.URL)
+			netRes, err := network.Collect(runCtx, job.URL)
 			if err != nil {
 				lastErr = err
 				runFailed = true
@@ -210,7 +218,7 @@ func (m *Manager) processJob(job *store.Job) {
 		// 2. Browser Tier
 		if hasTier("browser") {
 			// Create a browser context for this run
-			bCtx, bCancel := m.chrome.NewContext(m.ctx)
+			bCtx, bCancel := m.chrome.NewContext(runCtx)
 			browserRes, err := browser.Collect(bCtx, job.URL)
 			bCancel()
 			if err != nil {
@@ -224,7 +232,7 @@ func (m *Manager) processJob(job *store.Job) {
 		// 3. Vitals Tier
 		if hasTier("vitals") {
 			// Create a browser context for this run
-			vCtx, vCancel := m.chrome.NewContext(m.ctx)
+			vCtx, vCancel := m.chrome.NewContext(runCtx)
 			vitalsRes, err := vitals.Collect(vCtx, job.URL)
 			vCancel()
 			if err != nil {
@@ -237,7 +245,7 @@ func (m *Manager) processJob(job *store.Job) {
 
 		// 4. Lighthouse Tier
 		if hasTier("lighthouse") {
-			lhRes, err := lighthouse.Collect(m.ctx, job.URL, m.googleAPIKey)
+			lhRes, err := lighthouse.Collect(runCtx, job.URL, m.googleAPIKey)
 			if err != nil {
 				lastErr = err
 				runFailed = true
@@ -246,6 +254,7 @@ func (m *Manager) processJob(job *store.Job) {
 			}
 		}
 
+		runCancel()
 
 		if !runFailed {
 			successCount++

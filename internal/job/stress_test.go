@@ -50,10 +50,18 @@ func TestBrowserConcurrencyStress(t *testing.T) {
 
 			// Poll for completion
 			for j := 0; j < 100; j++ {
-				finalJob, _ := s.GetJob(context.Background(), job.ID)
+				finalJob, err := s.GetJob(context.Background(), job.ID)
+				if err != nil || finalJob == nil {
+					t.Errorf("job %d: failed to fetch status: %v", idx, err)
+					return
+				}
 				if finalJob.Status == store.StatusCompleted || finalJob.Status == store.StatusFailed {
 					if finalJob.Status == store.StatusFailed {
-						t.Errorf("job %d failed: %v", idx, finalJob.Error)
+						errMsg := "<nil>"
+						if finalJob.Error != nil {
+							errMsg = *finalJob.Error
+						}
+						t.Errorf("job %d failed: %s", idx, errMsg)
 					}
 					return
 				}

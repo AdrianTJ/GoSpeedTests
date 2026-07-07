@@ -44,10 +44,17 @@ func NewManager() *Manager {
 
 func (m *Manager) NewContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	
-	// Create a new tab in the existing browser
-	return chromedp.NewContext(m.browser)
+	// Create a new tab in the existing browser. The tab derives from the
+	// shared browser context, not from ctx, so we must propagate the
+	// caller's cancellation/deadline explicitly.
+	tabCtx, tabCancel := chromedp.NewContext(m.browser)
+	m.mu.Unlock()
+
+	stop := context.AfterFunc(ctx, tabCancel)
+	return tabCtx, func() {
+		stop()
+		tabCancel()
+	}
 }
 
 func (m *Manager) Close() {

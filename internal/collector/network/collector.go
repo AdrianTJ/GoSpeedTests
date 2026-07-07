@@ -56,6 +56,9 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 
 	start := time.Now()
 	client := &http.Client{
+		// Guard against hung targets even when the caller passes a
+		// context without a deadline.
+		Timeout: 30 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 10 {
 				return fmt.Errorf("stopped after 10 redirects")

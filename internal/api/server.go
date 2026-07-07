@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/AdrianTJ/gospeedtest/internal/job"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
@@ -169,7 +168,7 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/v1/jobs/")
+	id := r.PathValue("id")
 	if id == "" {
 		http.Error(w, "missing job id", http.StatusBadRequest)
 		return
@@ -228,7 +227,7 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteJob(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/v1/jobs/")
+	id := r.PathValue("id")
 	if id == "" {
 		http.Error(w, "missing job id", http.StatusBadRequest)
 		return

@@ -90,8 +90,9 @@ type sqliteStore struct {
 
 // NewStore initializes a new SQLite store and creates the schema.
 func NewStore(dsn string) (Store, error) {
-	// Enable WAL mode for better concurrency
-	db, err := sql.Open("sqlite3", dsn+"?_journal_mode=WAL&_synchronous=NORMAL")
+	// Enable WAL mode for better concurrency, and foreign keys so that
+	// ON DELETE CASCADE actually fires (SQLite leaves them off by default).
+	db, err := sql.Open("sqlite3", dsn+"?_journal_mode=WAL&_synchronous=NORMAL&_foreign_keys=on")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite db: %w", err)
 	}
@@ -340,6 +341,11 @@ func (s *sqliteStore) GetHistory(ctx context.Context, url string) (interface{}, 
 }
 
 func (s *sqliteStore) DeleteJob(ctx context.Context, id string) error {
+	// results cascade via the foreign key, but webhook_deliveries has no FK,
+	// so remove its rows explicitly to avoid orphaned deliveries.
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM webhook_deliveries WHERE job_id = ?", id); err != nil {
+		return err
+	}
 	_, err := s.db.ExecContext(ctx, "DELETE FROM jobs WHERE id = ?", id)
 	return err
 }
