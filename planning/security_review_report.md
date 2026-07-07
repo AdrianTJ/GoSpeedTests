@@ -11,14 +11,13 @@ GoSpeedTest is a robust, well-structured, and highly optimized toolkit. Paramete
 
 A comprehensive security audit identified several critical security vulnerabilities: **blind SSRF in webhooks**, **SSRF bypasses via HTTP redirects**, **timing attacks** on API key authentication, and **Denial of Service (DoS)** vectors via unlimited iterations.
 
-**Four of the six findings are fully resolved in the core codebase** (webhook URL validation, redirect-aware clients, constant-time key comparison, and the `runs` cap), with test coverage to prevent regressions.
+**Five of the six findings are fully resolved in the core codebase** (webhook URL validation, redirect-aware clients, constant-time key comparison, the `runs` cap, and — as of July 7, 2026 — DNS rebinding), with test coverage to prevent regressions.
 
-**Two findings are _not_ fixed in code and are only mitigated by deployment topology:**
+**One finding is _not_ fixed in code and is only mitigated by deployment topology:**
 
-- **DNS rebinding / TOCTOU (§3)** — `ValidateURL` still resolves the host separately from the subsequent request; no IP pinning is implemented. An attacker controlling DNS can still rebind between check and use.
-- **Chrome `--no-sandbox` (§5)** — `chromedp.NoSandbox` remains set and the shipped `Dockerfile` runs as root without dropping capabilities or restricting egress.
+- **Chrome `--no-sandbox` (§5)** — `chromedp.NoSandbox` remains set and the shipped `Dockerfile` runs as root without dropping capabilities or restricting egress. This is acceptable **only** when the daemon is deployed inside a network-isolated, non-privileged container (see Production Deployment Guidelines). It should not be considered closed at the application layer.
 
-These two are acceptable **only** when the daemon is deployed inside a network-isolated environment that blocks egress to private CIDRs and the cloud metadata endpoint (see Production Deployment Guidelines). They should not be considered closed at the application layer.
+DNS rebinding (§3) is now closed for HTTP-based tiers by a connect-time IP guard: the network collector and webhook worker dial through a hardened `http.Client` whose dialer validates the resolved destination IP immediately before the socket opens, so the IP that is checked is the IP that is dialed. Chrome-based tiers still rely on network isolation, since ChromeDP cannot be pinned without breaking TLS.
 
 Below is a detailed analysis of these vulnerabilities, the mitigations applied, and their current status.
 
@@ -101,7 +100,7 @@ var ssrfSafeClient = &http.Client{
 > [!WARNING]
 > **Severity:** Medium-High  
 > **Impact:** Bypassing local IP restrictions.
-> **Status: NOT fixed in code.** The mitigation below is not implemented; this is only addressed by network isolation at deployment (see Production Deployment Guidelines).
+> **Status: Fixed in code (HTTP tiers), July 7, 2026.** The network collector and webhook worker now use `validator.NewSafeClient`, whose `net.Dialer.Control` hook validates the resolved destination IP at connect time (gated by `GOST_ALLOW_PRIVATE_IPS`). Because the check runs on the exact address being dialed, the rebinding TOCTOU window is closed. Chrome-based tiers still depend on network isolation.
 
 #### The Problem:
 `ValidateURL` performs a DNS lookup to check if the host resolves to a private IP, and then the HTTP client resolves it *again* to make the request. This is a classic Time-of-Check to Time-of-Use (TOCTOU) bug. An attacker can set up a custom DNS server that resolves to a public IP (e.g. `8.8.8.8`) on the first query (validation) and a private IP (e.g., `127.0.0.1`) on the second query (the actual HTTP request), with a TTL of 0.
@@ -198,7 +197,7 @@ if req.Runs > 10 {
 |---|---|---|
 | **SQL Injection** | ✅ Yes | Strictly parameterized using standard `sql.DB` placeholders (`?`). Safe. |
 | **SSRF in Speed Test Target (redirects)** | ✅ Yes | **Resolved in code.** Target host validation is active and redirect-aware (`http.Client` redirects validated at each hop). |
-| **DNS Rebinding / TOCTOU** | ⚠️ Partial | **Not fixed in code.** No IP pinning; relies on network-isolated deployment (see §3 and Deployment Guidelines). |
+| **DNS Rebinding / TOCTOU** | ✅ Yes (HTTP tiers) | **Resolved in code.** Connect-time IP validation via a hardened dialer (`validator.NewSafeClient`) closes the TOCTOU window. Chrome tiers still rely on network isolation. |
 | **SSRF in Webhooks** | ✅ Yes | **Resolved in code.** `WebhookURL` is validated at job submission, and the background webhook worker uses a custom redirect-aware client. |
 | **API Auth Strength** | ✅ Yes | **Resolved in code.** Authenticated routes are protected with `crypto/subtle.ConstantTimeCompare` key validation. |
 | **Resource Exhaustion (runs)** | ✅ Yes | **Resolved in code.** Job requests hard-capped to a maximum of 10 runs per job. |

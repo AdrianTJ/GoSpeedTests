@@ -45,10 +45,11 @@ Fixed during a code-quality audit pass:
 - [x] Removed the `Submit`/`Stop` send-on-closed-channel race.
 - [x] Strongly-typed `Result` metric fields and `GetHistory` (were `interface{}`).
 - [x] Fixed the CLI smoke test (hardcoded macOS Go path) and gated Chrome-dependent tests behind `-short`; added a CI workflow.
+- [x] **Closed DNS-rebinding (TOCTOU) for HTTP tiers:** the network collector and webhook worker dial through `validator.NewSafeClient`, which validates the resolved destination IP at connect time (gated by `GOST_ALLOW_PRIVATE_IPS`). See `security_review_report.md` §3.
 
 ### Pending
 - [ ] Distributed workers.
-- [ ] **Security (deployment-only today, not enforced in code):** DNS-rebinding IP pinning and Chrome sandboxing. See `security_review_report.md` §3 and §5 — currently mitigated only by network-isolated deployment.
+- [ ] **Security (deployment-only, not enforced in code):** Chrome `--no-sandbox` and running the container as non-root. See `security_review_report.md` §5 — currently mitigated only by network-isolated, non-privileged deployment. (DNS rebinding for Chrome tiers also relies on this isolation, since ChromeDP cannot be IP-pinned without breaking TLS.)
 
 ---
 
