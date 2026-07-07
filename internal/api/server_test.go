@@ -15,7 +15,6 @@ import (
 	"github.com/AdrianTJ/gospeedtest/internal/store"
 )
 
-
 func TestAPIServer(t *testing.T) {
 	// Setup
 	tmpDir, _ := os.MkdirTemp("", "api-server-test")
@@ -234,4 +233,3 @@ func TestAPIServer_RunsConstraint(t *testing.T) {
 		})
 	}
 }
-

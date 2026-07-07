@@ -12,7 +12,6 @@ import (
 	"github.com/AdrianTJ/gospeedtest/internal/validator"
 )
 
-
 // Result represents the metrics collected at the network level.
 type Result struct {
 	DNSLookupMS    float64 `json:"dns_lookup_ms"`
@@ -28,10 +27,10 @@ type Result struct {
 // Collect performs a network-level timing trace for the given URL.
 func Collect(ctx context.Context, url string) (*Result, error) {
 	var (
-		dnsStart, dnsDone           time.Time
-		connStart, connDone         time.Time
-		tlsStart, tlsDone           time.Time
-		gotFirstByte, gotResponse   time.Time
+		dnsStart, dnsDone         time.Time
+		connStart, connDone       time.Time
+		tlsStart, tlsDone         time.Time
+		gotFirstByte, gotResponse time.Time
 	)
 
 	trace := &httptrace.ClientTrace{
@@ -43,9 +42,9 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 			}
 			connStart = time.Now()
 		},
-		ConnectDone: func(_, _ string, _ error) { connDone = time.Now() },
-		TLSHandshakeStart: func() { tlsStart = time.Now() },
-		TLSHandshakeDone:  func(_ tls.ConnectionState, _ error) { tlsDone = time.Now() },
+		ConnectDone:          func(_, _ string, _ error) { connDone = time.Now() },
+		TLSHandshakeStart:    func() { tlsStart = time.Now() },
+		TLSHandshakeDone:     func(_ tls.ConnectionState, _ error) { tlsDone = time.Now() },
 		GotFirstResponseByte: func() { gotFirstByte = time.Now() },
 	}
 
@@ -74,7 +73,6 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-
 
 	n, err := io.Copy(io.Discard, resp.Body)
 	if err != nil {

@@ -69,10 +69,13 @@ func (m *Manager) Start() {
 }
 
 // Stop gracefully shuts down the worker pool.
+//
+// The queue channels are deliberately not closed: workers and the webhook
+// loop exit via ctx cancellation, and leaving the channels open means a
+// Submit racing with Stop can never send on a closed channel (which would
+// panic). Any job left buffered at shutdown simply stays PENDING in the store.
 func (m *Manager) Stop() {
 	m.cancel()
-	close(m.jobQueue)
-	close(m.webhookChan)
 	m.wg.Wait()
 	m.chrome.Close()
 }
@@ -97,6 +100,13 @@ func (m *Manager) Submit(ctx context.Context, url string, tiers []string, runs i
 	m.mu.Lock()
 	m.pendingJobs[job.ID] = struct{}{}
 	m.mu.Unlock()
+
+	if m.ctx.Err() != nil {
+		m.mu.Lock()
+		delete(m.pendingJobs, job.ID)
+		m.mu.Unlock()
+		return nil, fmt.Errorf("manager is shutting down")
+	}
 
 	select {
 	case m.jobQueue <- job:
@@ -377,23 +387,19 @@ func (m *Manager) processPendingWebhooks(client *http.Client) {
 }
 
 func (m *Manager) attemptWebhook(client *http.Client, deliveryID string) {
-	// For immediate attempts, we need to fetch the full delivery first
-	// We'll use a temporary context for the DB fetch
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// This is a bit inefficient (extra DB call), but keeps logic clean
-	deliveries, err := m.store.GetPendingWebhooks(ctx, 100) // Filter by ID would be better but we only have GetPending
-	if err != nil {
+	d, err := m.store.GetWebhookByID(ctx, deliveryID)
+	if err != nil || d == nil {
 		return
 	}
-	
-	for _, d := range deliveries {
-		if d.ID == deliveryID {
-			m.sendOneWebhook(client, d)
-			return
-		}
+	// Only deliver if it is still pending; the periodic sweep may have
+	// already handled it.
+	if d.Status != "PENDING" {
+		return
 	}
+	m.sendOneWebhook(client, *d)
 }
 
 func (m *Manager) sendOneWebhook(client *http.Client, d store.WebhookDelivery) {
@@ -402,7 +408,7 @@ func (m *Manager) sendOneWebhook(client *http.Client, d store.WebhookDelivery) {
 	d.LastAttempt = &now
 
 	resp, err := client.Post(d.URL, "application/json", bytes.NewBuffer(d.Payload))
-	
+
 	success := err == nil && resp != nil && resp.StatusCode >= 200 && resp.StatusCode < 300
 	if resp != nil {
 		defer resp.Body.Close()

@@ -1,6 +1,6 @@
 # Project Status: GoSpeedTest
 
-**Current Date:** May 20, 2026
+**Current Date:** July 7, 2026
 **Version:** v1.0.0 (SQLite-Only Stable)
 
 ---
@@ -36,8 +36,19 @@
   - [x] Implement constant-time comparison (`subtle.ConstantTimeCompare`) for API Key authentication to prevent timing attacks.
   - [x] Enforce an upper limit of 10 on the user-supplied `runs` parameter to prevent DoS.
 
+### Code Quality Audit (July 7, 2026)
+Fixed during a code-quality audit pass:
+- [x] Enabled the SQLite `foreign_keys` pragma so `results` cascade-deletes fire; `DeleteJob` now also clears `webhook_deliveries` (previously both were orphaned on delete).
+- [x] Enforced the per-job `TimeoutS` in the daemon worker and added a network-collector client timeout (a hung target could previously pin a worker forever).
+- [x] `chrome.NewContext` now propagates the caller's context deadline to the tab (browser/vitals timeouts were previously ignored).
+- [x] Replaced the webhook "scan 100 rows to find one" lookup with `GetWebhookByID`.
+- [x] Removed the `Submit`/`Stop` send-on-closed-channel race.
+- [x] Strongly-typed `Result` metric fields and `GetHistory` (were `interface{}`).
+- [x] Fixed the CLI smoke test (hardcoded macOS Go path) and gated Chrome-dependent tests behind `-short`; added a CI workflow.
+
 ### Pending
 - [ ] Distributed workers.
+- [ ] **Security (deployment-only today, not enforced in code):** DNS-rebinding IP pinning and Chrome sandboxing. See `security_review_report.md` §3 and §5 — currently mitigated only by network-isolated deployment.
 
 ---
 

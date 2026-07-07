@@ -1,6 +1,6 @@
 # Security Review Report: GoSpeedTest
-**Date:** May 20, 2026  
-**Status:** Fully Resolved & Mitigated  
+**Date:** May 20, 2026 (updated July 7, 2026)  
+**Status:** Resolved in code, except two items mitigated only at the deployment layer  
 **Target:** Production-Readiness API Deployment  
 
 ---
@@ -11,9 +11,16 @@ GoSpeedTest is a robust, well-structured, and highly optimized toolkit. Paramete
 
 A comprehensive security audit identified several critical security vulnerabilities: **blind SSRF in webhooks**, **SSRF bypasses via HTTP redirects**, **timing attacks** on API key authentication, and **Denial of Service (DoS)** vectors via unlimited iterations.
 
-**As of May 20, 2026, all of these vulnerabilities have been fully resolved and mitigated** in the core codebase. Robust test coverage has been established using Test-Driven Development (TDD) to prevent regressions. GoSpeedTest is now secure and fully ready for production API deployment.
+**Four of the six findings are fully resolved in the core codebase** (webhook URL validation, redirect-aware clients, constant-time key comparison, and the `runs` cap), with test coverage to prevent regressions.
 
-Below is a detailed analysis of these vulnerabilities, the exact mitigations applied to resolve them, and their verification details.
+**Two findings are _not_ fixed in code and are only mitigated by deployment topology:**
+
+- **DNS rebinding / TOCTOU (§3)** — `ValidateURL` still resolves the host separately from the subsequent request; no IP pinning is implemented. An attacker controlling DNS can still rebind between check and use.
+- **Chrome `--no-sandbox` (§5)** — `chromedp.NoSandbox` remains set and the shipped `Dockerfile` runs as root without dropping capabilities or restricting egress.
+
+These two are acceptable **only** when the daemon is deployed inside a network-isolated environment that blocks egress to private CIDRs and the cloud metadata endpoint (see Production Deployment Guidelines). They should not be considered closed at the application layer.
+
+Below is a detailed analysis of these vulnerabilities, the mitigations applied, and their current status.
 
 ---
 
@@ -94,6 +101,7 @@ var ssrfSafeClient = &http.Client{
 > [!WARNING]
 > **Severity:** Medium-High  
 > **Impact:** Bypassing local IP restrictions.
+> **Status: NOT fixed in code.** The mitigation below is not implemented; this is only addressed by network isolation at deployment (see Production Deployment Guidelines).
 
 #### The Problem:
 `ValidateURL` performs a DNS lookup to check if the host resolves to a private IP, and then the HTTP client resolves it *again* to make the request. This is a classic Time-of-Check to Time-of-Use (TOCTOU) bug. An attacker can set up a custom DNS server that resolves to a public IP (e.g. `8.8.8.8`) on the first query (validation) and a private IP (e.g., `127.0.0.1`) on the second query (the actual HTTP request), with a TTL of 0.
@@ -140,6 +148,7 @@ if subtle.ConstantTimeCompare([]byte(key), []byte(s.apiKey)) != 1 {
 > [!WARNING]
 > **Severity:** Medium-High (Depending on host privileges)  
 > **Impact:** Host compromise / Remote Code Execution (RCE) via Chrome exploits.
+> **Status: NOT fixed in code.** `chromedp.NoSandbox` is still set and the `Dockerfile` runs as root. Mitigation depends entirely on the deployment hardening below.
 
 #### The Problem:
 In `internal/chrome/manager.go`, the allocator options include:
@@ -188,11 +197,13 @@ if req.Runs > 10 {
 | Feature | Verified Safe? | Details / Status |
 |---|---|---|
 | **SQL Injection** | ✅ Yes | Strictly parameterized using standard `sql.DB` placeholders (`?`). Safe. |
-| **SSRF in Speed Test Target** | ✅ Yes | **Fully Resolved.** Target host validation is active and redirect-aware (`http.Client` redirects validated at each hop). DNS rebinding is mitigated in standard operations and Dockerized deployments. |
-| **SSRF in Webhooks** | ✅ Yes | **Fully Resolved.** `WebhookURL` is validated at job submission, and the background webhook worker uses a custom redirect-aware client. |
-| **API Auth Strength** | ✅ Yes | **Fully Resolved.** Authenticated routes are protected with `crypto/subtle.ConstantTimeCompare` key validation. |
-| **Resource Exhaustion** | ✅ Yes | **Fully Resolved.** Job requests hard-capped to a maximum of 10 runs per job. |
-| **Log Injection** | ✅ Yes | Uses structured logging (`slog`) with JSON formatting. Sanitizes payload logs. |
+| **SSRF in Speed Test Target (redirects)** | ✅ Yes | **Resolved in code.** Target host validation is active and redirect-aware (`http.Client` redirects validated at each hop). |
+| **DNS Rebinding / TOCTOU** | ⚠️ Partial | **Not fixed in code.** No IP pinning; relies on network-isolated deployment (see §3 and Deployment Guidelines). |
+| **SSRF in Webhooks** | ✅ Yes | **Resolved in code.** `WebhookURL` is validated at job submission, and the background webhook worker uses a custom redirect-aware client. |
+| **API Auth Strength** | ✅ Yes | **Resolved in code.** Authenticated routes are protected with `crypto/subtle.ConstantTimeCompare` key validation. |
+| **Resource Exhaustion (runs)** | ✅ Yes | **Resolved in code.** Job requests hard-capped to a maximum of 10 runs per job. |
+| **Chrome Sandbox** | ⚠️ Partial | **Not fixed in code.** `--no-sandbox` still set; relies on container hardening (see §5). |
+| **Log Injection** | ✅ Yes | Uses structured logging (`slog`) with JSON formatting. |
 
 ---
 

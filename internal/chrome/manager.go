@@ -26,10 +26,10 @@ func NewManager() *Manager {
 	)
 
 	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
-	
+
 	// Create the master browser context
 	browserCtx, _ := chromedp.NewContext(allocCtx)
-	
+
 	// Start the browser to ensure it's ready
 	if err := chromedp.Run(browserCtx); err != nil {
 		slog.Error("Failed to start browser", "error", err)

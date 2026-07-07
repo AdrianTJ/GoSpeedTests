@@ -4,13 +4,13 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/AdrianTJ/gospeedtest/internal/job"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
 	"github.com/AdrianTJ/gospeedtest/internal/validator"
 )
-
 
 type Server struct {
 	manager       *job.Manager
@@ -47,7 +47,6 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
@@ -184,7 +183,10 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results, _ := s.store.GetResultsByJobID(r.Context(), id)
+	results, err := s.store.GetResultsByJobID(r.Context(), id)
+	if err != nil {
+		slog.Error("Failed to fetch job results", "job_id", id, "error", err)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{

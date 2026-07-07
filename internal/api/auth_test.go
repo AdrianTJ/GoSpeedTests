@@ -124,4 +124,3 @@ func TestAPIServer_ConstantTimeAuthBoundaries(t *testing.T) {
 		t.Errorf("extremely long X-API-Key: expected 401, got %d", w.Code)
 	}
 }
-

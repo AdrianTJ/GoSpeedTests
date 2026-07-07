@@ -27,7 +27,7 @@ func TestGostdStartup(t *testing.T) {
 
 	req, _ := http.NewRequestWithContext(ctx, "GET", "http://localhost:9090/v1/jobs", nil)
 	client := &http.Client{}
-	
+
 	// We expect 404 because /v1/jobs GET is not implemented yet in NewServeMux
 	// but the server should respond.
 	resp, err := client.Do(req)

@@ -198,4 +198,3 @@ func TestJobManager_WebhookRedirectSSRF(t *testing.T) {
 		t.Error("timed out waiting for webhook to redirect and hit target")
 	}
 }
-

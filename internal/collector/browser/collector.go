@@ -12,11 +12,11 @@ import (
 
 // WaterfallEntry represents a single resource request in the timeline.
 type WaterfallEntry struct {
-	URL       string  `json:"url"`
-	Type      string  `json:"type"`
-	Status    int     `json:"status"`
-	Size      int64   `json:"size_bytes"`
-	TotalMS   float64 `json:"total_ms"`
+	URL     string  `json:"url"`
+	Type    string  `json:"type"`
+	Status  int     `json:"status"`
+	Size    int64   `json:"size_bytes"`
+	TotalMS float64 `json:"total_ms"`
 }
 
 // Result represents the metrics collected from a headless browser.
@@ -78,7 +78,7 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 	res.Waterfall = waterfall
 	res.ResourceCount = len(waterfall)
 
-	// In case performance API isn't fully ready (loadEventEnd is 0), 
+	// In case performance API isn't fully ready (loadEventEnd is 0),
 	// we fall back to our own timer as a sanity check.
 	if res.PageLoadMS <= 0 {
 		res.PageLoadMS = float64(time.Since(startTime).Nanoseconds()) / 1e6

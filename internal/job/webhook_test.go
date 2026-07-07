@@ -45,12 +45,12 @@ func TestWebhookRetries(t *testing.T) {
 
 	// 1. Wait for first attempt (which fails)
 	time.Sleep(2 * time.Second)
-	
+
 	if atomic.LoadInt32(&attempts) != 1 {
 		t.Errorf("expected 1 attempt after initial fail, got %d", atomic.LoadInt32(&attempts))
 	}
 
-	// 2. Wait for retry. 
+	// 2. Wait for retry.
 	// Backoff is 2^1 = 2 seconds.
 	// Ticker is 5 seconds.
 	// We wait 10 seconds total to be safe.
