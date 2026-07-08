@@ -3,6 +3,7 @@ package chrome
 import (
 	"context"
 	"log/slog"
+	"os"
 	"sync"
 
 	"github.com/chromedp/chromedp"
@@ -17,13 +18,22 @@ type Manager struct {
 
 func NewManager() *Manager {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.NoSandbox,
 		chromedp.DisableGPU,
 		chromedp.Headless,
 		// Force a consistent window size and User-Agent to ensure paints fire
 		chromedp.WindowSize(1920, 1080),
 		chromedp.UserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"),
 	)
+
+	// The Chrome sandbox is left ENABLED by default. It is a critical defense:
+	// a compromised renderer (e.g. via a malicious page in a browser/vitals
+	// tier) cannot escape to the host. Only disable it deliberately, in an
+	// already-isolated environment that cannot support the sandbox (e.g. a
+	// container without the setuid helper or user namespaces).
+	if os.Getenv("GOST_CHROME_NO_SANDBOX") == "true" {
+		slog.Warn("Chrome sandbox DISABLED via GOST_CHROME_NO_SANDBOX; a browser exploit could escape to the host. Only use this in a trusted, network-isolated deployment.")
+		opts = append(opts, chromedp.NoSandbox)
+	}
 
 	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
 

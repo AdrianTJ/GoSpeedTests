@@ -46,10 +46,11 @@ Fixed during a code-quality audit pass:
 - [x] Strongly-typed `Result` metric fields and `GetHistory` (were `interface{}`).
 - [x] Fixed the CLI smoke test (hardcoded macOS Go path) and gated Chrome-dependent tests behind `-short`; added a CI workflow.
 - [x] **Closed DNS-rebinding (TOCTOU) for HTTP tiers:** the network collector and webhook worker dial through `validator.NewSafeClient`, which validates the resolved destination IP at connect time (gated by `GOST_ALLOW_PRIVATE_IPS`). See `security_review_report.md` §3.
+- [x] **Hardened the Chrome sandbox:** enabled by default in code (opt-out via `GOST_CHROME_NO_SANDBOX`); the `Dockerfile` now runs as a non-root user with the setuid sandbox helper. See `security_review_report.md` §5.
 
 ### Pending
 - [ ] Distributed workers.
-- [ ] **Security (deployment-only, not enforced in code):** Chrome `--no-sandbox` and running the container as non-root. See `security_review_report.md` §5 — currently mitigated only by network-isolated, non-privileged deployment. (DNS rebinding for Chrome tiers also relies on this isolation, since ChromeDP cannot be IP-pinned without breaking TLS.)
+- [ ] **Security defense-in-depth (deployment):** network isolation is still recommended — Chrome-tier DNS rebinding and the Chrome sandbox on hosts without user namespaces both benefit from it. See `security_review_report.md` §3 and §5.
 
 ---
 

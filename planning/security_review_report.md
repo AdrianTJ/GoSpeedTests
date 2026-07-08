@@ -11,13 +11,12 @@ GoSpeedTest is a robust, well-structured, and highly optimized toolkit. Paramete
 
 A comprehensive security audit identified several critical security vulnerabilities: **blind SSRF in webhooks**, **SSRF bypasses via HTTP redirects**, **timing attacks** on API key authentication, and **Denial of Service (DoS)** vectors via unlimited iterations.
 
-**Five of the six findings are fully resolved in the core codebase** (webhook URL validation, redirect-aware clients, constant-time key comparison, the `runs` cap, and — as of July 7, 2026 — DNS rebinding), with test coverage to prevent regressions.
+**As of July 7, 2026 all six findings have code-level mitigations** (webhook URL validation, redirect-aware clients, constant-time key comparison, the `runs` cap, DNS rebinding, and the Chrome sandbox), with test coverage to prevent regressions.
 
-**One finding is _not_ fixed in code and is only mitigated by deployment topology:**
+**Two mechanisms still depend partly on deployment topology and must not be treated as fully closed at the application layer:**
 
-- **Chrome `--no-sandbox` (§5)** — `chromedp.NoSandbox` remains set and the shipped `Dockerfile` runs as root without dropping capabilities or restricting egress. This is acceptable **only** when the daemon is deployed inside a network-isolated, non-privileged container (see Production Deployment Guidelines). It should not be considered closed at the application layer.
-
-DNS rebinding (§3) is now closed for HTTP-based tiers by a connect-time IP guard: the network collector and webhook worker dial through a hardened `http.Client` whose dialer validates the resolved destination IP immediately before the socket opens, so the IP that is checked is the IP that is dialed. Chrome-based tiers still rely on network isolation, since ChromeDP cannot be pinned without breaking TLS.
+- **DNS rebinding for Chrome tiers (§3)** — the HTTP tiers are now protected by a connect-time IP guard (the network collector and webhook worker dial through a hardened `http.Client` whose dialer validates the resolved destination IP immediately before the socket opens). Chrome-based tiers cannot be IP-pinned without breaking TLS, so they still rely on network isolation.
+- **Chrome sandbox (§5)** — the sandbox is now enabled by default in code and the container runs non-root with the setuid sandbox helper, but hosts lacking user-namespace support may fall back to the setuid helper or the `GOST_CHROME_NO_SANDBOX` opt-out; defense-in-depth network isolation is still recommended.
 
 Below is a detailed analysis of these vulnerabilities, the mitigations applied, and their current status.
 
@@ -147,7 +146,7 @@ if subtle.ConstantTimeCompare([]byte(key), []byte(s.apiKey)) != 1 {
 > [!WARNING]
 > **Severity:** Medium-High (Depending on host privileges)  
 > **Impact:** Host compromise / Remote Code Execution (RCE) via Chrome exploits.
-> **Status: NOT fixed in code.** `chromedp.NoSandbox` is still set and the `Dockerfile` runs as root. Mitigation depends entirely on the deployment hardening below.
+> **Status: Hardened, July 7, 2026.** The Chrome sandbox is now ENABLED by default — `chromedp.NoSandbox` is only added when `GOST_CHROME_NO_SANDBOX=true` is set explicitly (logged as a warning). The `Dockerfile` runs as a non-root user (`gost`) and keeps the setuid sandbox helper (`chrome-sandbox`, mode 4755) so the sandbox functions unprivileged. Deployments on hosts without user-namespace support may still need the setuid helper (kept) or, as a last resort, the opt-out flag.
 
 #### The Problem:
 In `internal/chrome/manager.go`, the allocator options include:
@@ -201,7 +200,7 @@ if req.Runs > 10 {
 | **SSRF in Webhooks** | ✅ Yes | **Resolved in code.** `WebhookURL` is validated at job submission, and the background webhook worker uses a custom redirect-aware client. |
 | **API Auth Strength** | ✅ Yes | **Resolved in code.** Authenticated routes are protected with `crypto/subtle.ConstantTimeCompare` key validation. |
 | **Resource Exhaustion (runs)** | ✅ Yes | **Resolved in code.** Job requests hard-capped to a maximum of 10 runs per job. |
-| **Chrome Sandbox** | ⚠️ Partial | **Not fixed in code.** `--no-sandbox` still set; relies on container hardening (see §5). |
+| **Chrome Sandbox** | ✅ Yes | **Hardened.** Sandbox enabled by default (opt-out via `GOST_CHROME_NO_SANDBOX`); container runs non-root with the setuid sandbox helper (see §5). |
 | **Log Injection** | ✅ Yes | Uses structured logging (`slog`) with JSON formatting. |
 
 ---
