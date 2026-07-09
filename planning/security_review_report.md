@@ -146,7 +146,7 @@ if subtle.ConstantTimeCompare([]byte(key), []byte(s.apiKey)) != 1 {
 > [!WARNING]
 > **Severity:** Medium-High (Depending on host privileges)  
 > **Impact:** Host compromise / Remote Code Execution (RCE) via Chrome exploits.
-> **Status: Hardened, July 7, 2026.** The Chrome sandbox is now ENABLED by default — `chromedp.NoSandbox` is only added when `GOST_CHROME_NO_SANDBOX=true` is set explicitly (logged as a warning). The `Dockerfile` runs as a non-root user (`gost`) and keeps the setuid sandbox helper (`chrome-sandbox`, mode 4755) so the sandbox functions unprivileged. Deployments on hosts without user-namespace support may still need the setuid helper (kept) or, as a last resort, the opt-out flag.
+> **Status: Hardened, July 7, 2026 (clarified July 9 after dogfooding).** The code no longer force-disables the sandbox — `chromedp.NoSandbox` is only added when `GOST_CHROME_NO_SANDBOX=true`. **Important nuance:** chromedp auto-appends `--no-sandbox` when the process runs as **root** (`chromedp/allocate.go:159`), so "sandbox enabled by default" only holds for **non-root** execution. The real control is therefore the `Dockerfile` running as a non-root user (`gost`) with the setuid sandbox helper (`chrome-sandbox`, mode 4755) so the sandbox functions unprivileged. Running the daemon as root disables the sandbox regardless of the flag; the manager now logs a warning in that case (previously silent). Hosts without user-namespace support may still need the setuid helper (kept) or, as a last resort, the opt-out flag.
 
 #### The Problem:
 In `internal/chrome/manager.go`, the allocator options include:

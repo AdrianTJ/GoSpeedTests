@@ -48,6 +48,13 @@ Fixed during a code-quality audit pass:
 - [x] **Closed DNS-rebinding (TOCTOU) for HTTP tiers:** the network collector and webhook worker dial through `validator.NewSafeClient`, which validates the resolved destination IP at connect time (gated by `GOST_ALLOW_PRIVATE_IPS`). See `security_review_report.md` §3.
 - [x] **Hardened the Chrome sandbox:** enabled by default in code (opt-out via `GOST_CHROME_NO_SANDBOX`); the `Dockerfile` now runs as a non-root user with the setuid sandbox helper. See `security_review_report.md` §5.
 
+### Dogfooding Fixes (July 9, 2026)
+Ran the daemon + CLI end-to-end (`scripts/dogfood.sh`, report in `planning/dogfood_report_2026-07.md`) and fixed the findings:
+- [x] Multi-tier jobs now report `PARTIAL` when some tiers succeed and some fail (was `FAILED`, which hid usable results); `FAILED` only when every attempted tier fails.
+- [x] The daemon logs a warning when running as root (chromedp auto-disables the sandbox); security doc §5 clarified that the non-root Docker user is the real control.
+- [x] Vitals clamps `LCP >= FCP`; CLI now signals failure (exit 1 only when all tiers fail), persists all tiers to `-db`, and starts Chrome only when needed.
+- [x] `docs/openapi.yaml` synced to the implementation (status enum, tiers enum, response shapes, health/ready content types).
+
 ### Pending
 - [ ] Distributed workers.
 - [ ] **Security defense-in-depth (deployment):** network isolation is still recommended — Chrome-tier DNS rebinding and the Chrome sandbox on hosts without user namespaces both benefit from it. See `security_review_report.md` §3 and §5.

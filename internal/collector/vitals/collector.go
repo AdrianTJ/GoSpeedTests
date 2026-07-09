@@ -46,5 +46,12 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 		return nil, fmt.Errorf("vitals collection failed: %w", err)
 	}
 
+	// LCP is the largest contentful paint, which by definition occurs at or
+	// after FCP. On tiny/fast pages the independent measurements can invert due
+	// to fallbacks; clamp so the reported values stay internally consistent.
+	if res.LCP < res.FCP {
+		res.LCP = res.FCP
+	}
+
 	return &res, nil
 }

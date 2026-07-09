@@ -15,6 +15,21 @@ persistence + migrations + the **FK-cascade delete** (the headline audit fix) ar
 No crashes, panics, or data corruption observed. Nine findings below are UX/documentation issues or
 environment notes — none are release blockers, but #1 and #2 are worth addressing.
 
+## Status update — fixes applied July 9, 2026
+
+Findings **#1–#6 and #8 are fixed** on branch `claude/repo-audit-quality-4a5ywn`:
+- **#1** per-tier tracking → jobs are now `PARTIAL` (not `FAILED`) when some tiers succeed and some
+  fail; `FAILED` only when every attempted tier fails. Successful results are preserved.
+- **#2** the manager now logs a warning when running as root (sandbox auto-disabled by chromedp); the
+  security report §5 is qualified accordingly.
+- **#3** vitals clamps `LCP >= FCP`.
+- **#4** the CLI exits non-zero only when every tier attempt fails (partial → stderr warning, exit 0).
+- **#5** the CLI now persists browser + vitals results too.
+- **#6** the CLI only starts Chrome for tiers that need it.
+- **#8** `docs/openapi.yaml` synced to the implementation.
+
+**Deferred:** #7 (cancelled-queued-job slot — self-heals with workers>0) and #9 (Swagger unpkg — env, not a bug).
+
 ## Environment (this sandbox)
 
 - Runs as **root**; Chromium 141 present but off-PATH (symlinked to `/usr/local/bin/google-chrome`).

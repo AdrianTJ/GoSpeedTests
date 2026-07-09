@@ -33,6 +33,12 @@ func NewManager() *Manager {
 	if os.Getenv("GOST_CHROME_NO_SANDBOX") == "true" {
 		slog.Warn("Chrome sandbox DISABLED via GOST_CHROME_NO_SANDBOX; a browser exploit could escape to the host. Only use this in a trusted, network-isolated deployment.")
 		opts = append(opts, chromedp.NoSandbox)
+	} else if os.Geteuid() == 0 {
+		// chromedp auto-appends --no-sandbox when running as root (Chrome
+		// refuses to start otherwise), so the sandbox is effectively OFF here
+		// regardless of the flag above. Surface that instead of leaving it
+		// silent; run as a non-root user to keep the sandbox enabled.
+		slog.Warn("Running as root: Chrome's sandbox is auto-disabled by chromedp (--no-sandbox). Run as a non-root user to keep it enabled.")
 	}
 
 	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)

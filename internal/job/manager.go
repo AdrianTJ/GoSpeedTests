@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 
@@ -199,7 +200,14 @@ func (m *Manager) processJob(job *store.Job) {
 		timeout = 60 * time.Second
 	}
 
-	successCount := 0
+	// A run is "clean" when every attempted tier succeeded, "total-fail" when
+	// every attempted tier failed, and "partial" otherwise. Tracking per-tier
+	// outcomes (rather than failing the whole run on the first tier error) means
+	// a job with, say, a failing Lighthouse tier but a successful network tier
+	// is reported as PARTIAL with its usable results preserved — not FAILED.
+	cleanRuns := 0
+	failedRuns := 0
+	failedTiers := map[string]bool{}
 	var lastErr error
 	for i := 1; i <= job.Runs; i++ {
 		resultRecord := &store.Result{
@@ -212,14 +220,20 @@ func (m *Manager) processJob(job *store.Job) {
 		// Bound each run so a hung target cannot occupy a worker forever.
 		runCtx, runCancel := context.WithTimeout(m.ctx, timeout)
 
-		runFailed := false
+		tiersRun := 0
+		tiersFailed := 0
+		fail := func(tier string, err error) {
+			tiersFailed++
+			failedTiers[tier] = true
+			lastErr = err
+		}
 
 		// 1. Network Tier
 		if hasTier("network") {
+			tiersRun++
 			netRes, err := network.Collect(runCtx, job.URL)
 			if err != nil {
-				lastErr = err
-				runFailed = true
+				fail("network", err)
 			} else {
 				resultRecord.Network = netRes
 			}
@@ -227,13 +241,13 @@ func (m *Manager) processJob(job *store.Job) {
 
 		// 2. Browser Tier
 		if hasTier("browser") {
+			tiersRun++
 			// Create a browser context for this run
 			bCtx, bCancel := m.chrome.NewContext(runCtx)
 			browserRes, err := browser.Collect(bCtx, job.URL)
 			bCancel()
 			if err != nil {
-				lastErr = err
-				runFailed = true
+				fail("browser", err)
 			} else {
 				resultRecord.Browser = browserRes
 			}
@@ -241,13 +255,13 @@ func (m *Manager) processJob(job *store.Job) {
 
 		// 3. Vitals Tier
 		if hasTier("vitals") {
+			tiersRun++
 			// Create a browser context for this run
 			vCtx, vCancel := m.chrome.NewContext(runCtx)
 			vitalsRes, err := vitals.Collect(vCtx, job.URL)
 			vCancel()
 			if err != nil {
-				lastErr = err
-				runFailed = true
+				fail("vitals", err)
 			} else {
 				resultRecord.Vitals = vitalsRes
 			}
@@ -255,10 +269,10 @@ func (m *Manager) processJob(job *store.Job) {
 
 		// 4. Lighthouse Tier
 		if hasTier("lighthouse") {
+			tiersRun++
 			lhRes, err := lighthouse.Collect(runCtx, job.URL, m.googleAPIKey)
 			if err != nil {
-				lastErr = err
-				runFailed = true
+				fail("lighthouse", err)
 			} else {
 				resultRecord.Lighthouse = lhRes
 			}
@@ -266,8 +280,11 @@ func (m *Manager) processJob(job *store.Job) {
 
 		runCancel()
 
-		if !runFailed {
-			successCount++
+		switch {
+		case tiersRun == 0 || tiersFailed == 0:
+			cleanRuns++
+		case tiersFailed == tiersRun:
+			failedRuns++
 		}
 
 		if err := m.store.SaveResult(m.ctx, resultRecord); err != nil {
@@ -278,15 +295,19 @@ func (m *Manager) processJob(job *store.Job) {
 	status := store.StatusCompleted
 	var errStr *string
 
-	if successCount == 0 && job.Runs > 0 {
+	switch {
+	case job.Runs > 0 && failedRuns == job.Runs:
+		// Every run had all of its tiers fail.
 		status = store.StatusFailed
 		if lastErr != nil {
 			s := lastErr.Error()
 			errStr = &s
 		}
-	} else if successCount < job.Runs {
+	case cleanRuns < job.Runs:
+		// Some tiers (or some runs) failed, but not everything.
 		status = store.StatusPartial
-		s := fmt.Sprintf("only %d/%d runs succeeded; last error: %v", successCount, job.Runs, lastErr)
+		s := fmt.Sprintf("partial: %d/%d runs completed cleanly; failing tiers: %v; last error: %v",
+			cleanRuns, job.Runs, sortedKeys(failedTiers), lastErr)
 		errStr = &s
 	}
 
@@ -297,6 +318,16 @@ func (m *Manager) processJob(job *store.Job) {
 	if job.WebhookURL != "" {
 		m.sendWebhook(job.ID)
 	}
+}
+
+// sortedKeys returns the map keys in deterministic order (for stable messages).
+func sortedKeys(m map[string]bool) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func (m *Manager) sendWebhook(jobID string) {

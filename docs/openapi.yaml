@@ -18,22 +18,33 @@ components:
     Job:
       type: object
       properties:
-        job_id:
+        id:
           type: string
         url:
           type: string
         status:
           type: string
-          enum: [PENDING, RUNNING, COMPLETED, FAILED, TIMEOUT]
+          enum: [PENDING, RUNNING, COMPLETED, PARTIAL, FAILED]
+        tiers:
+          type: array
+          items:
+            type: string
+        runs:
+          type: integer
+        webhook_url:
+          type: string
+        error:
+          type: string
+          nullable: true
         created_at:
+          type: string
+          format: date-time
+        started_at:
           type: string
           format: date-time
         completed_at:
           type: string
           format: date-time
-        error:
-          type: string
-          nullable: true
 
     CreateJobRequest:
       type: object
@@ -47,13 +58,11 @@ components:
           type: array
           items:
             type: string
-            enum: [network, browser, vitals]
+            enum: [network, browser, vitals, lighthouse, all]
         runs:
           type: integer
           default: 1
-        timeout_s:
-          type: integer
-          default: 60
+          maximum: 10
         webhook_url:
           type: string
 
@@ -80,20 +89,24 @@ paths:
         '200':
           description: Server is alive
           content:
-            application/json:
+            text/plain:
               schema:
-                type: object
-                properties:
-                  status: { type: string, example: ok }
+                type: string
+                example: OK
 
   /v1/ready:
     get:
       summary: Readiness check
       responses:
         '200':
-          description: Server is ready to process jobs
+          description: Server is ready (plain-text body "READY")
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: READY
         '503':
-          description: Database or worker pool not ready
+          description: Database not ready
 
   /v1/jobs:
     post:
@@ -116,7 +129,8 @@ paths:
                 properties:
                   job_id: { type: string }
                   status: { type: string }
-                  poll_url: { type: string }
+        '400':
+          description: Invalid request (bad URL, invalid webhook_url, or runs > 10)
         '401':
           description: Unauthorized
 
@@ -151,7 +165,7 @@ paths:
           description: Job not found
 
     delete:
-      summary: Cancel a pending job
+      summary: Delete a job (cancels it first if still pending)
       security:
         - ApiKeyAuth: []
       parameters:
@@ -161,9 +175,7 @@ paths:
           schema: { type: string }
       responses:
         '204':
-          description: Job cancelled and deleted
-        '409':
-          description: Job cannot be cancelled (already running/finished)
+          description: Job deleted (its results and webhook deliveries are removed too)
 
   /v1/history:
     get:
