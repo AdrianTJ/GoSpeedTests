@@ -25,6 +25,12 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
+# Chrome's sandbox is left ENABLED (we do NOT pass --no-sandbox). The setuid
+# sandbox helper must be owned by root and setuid so the sandbox can start even
+# though the app runs as a non-root user below.
+RUN chown root:root /opt/google/chrome/chrome-sandbox \
+    && chmod 4755 /opt/google/chrome/chrome-sandbox
+
 COPY --from=builder /gost /usr/local/bin/gost
 COPY --from=builder /gostd /usr/local/bin/gostd
 
@@ -32,9 +38,20 @@ COPY --from=builder /gostd /usr/local/bin/gostd
 ENV GOST_LISTEN_ADDR=":8080"
 ENV DATABASE_URL="/data/gospeedtest.db"
 
-# Create data directory for SQLite
-RUN mkdir /data
+# Create a non-privileged user and a data directory it owns.
+RUN groupadd --system gost \
+    && useradd --system --gid gost --create-home --home-dir /home/gost gost \
+    && mkdir -p /data \
+    && chown -R gost:gost /data
+
+# Drop root: run the daemon (and the Chrome processes it spawns) unprivileged.
+USER gost
 
 EXPOSE 8080
 
+# Recommended: run with an init to reap zombie Chrome processes and a
+# Chrome-compatible seccomp profile, e.g.:
+#   docker run --init --security-opt seccomp=chrome.json -p 8080:8080 gost
+# Hosts without unprivileged user namespaces may need the setuid sandbox (kept
+# above) or, as a last resort in an isolated deployment, GOST_CHROME_NO_SANDBOX=true.
 ENTRYPOINT ["gostd"]

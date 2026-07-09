@@ -4,14 +4,13 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
-	"strings"
 
 	"github.com/AdrianTJ/gospeedtest/internal/job"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
 	"github.com/AdrianTJ/gospeedtest/internal/validator"
 )
-
 
 type Server struct {
 	manager       *job.Manager
@@ -48,7 +47,6 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
@@ -169,7 +167,7 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/v1/jobs/")
+	id := r.PathValue("id")
 	if id == "" {
 		http.Error(w, "missing job id", http.StatusBadRequest)
 		return
@@ -185,7 +183,10 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results, _ := s.store.GetResultsByJobID(r.Context(), id)
+	results, err := s.store.GetResultsByJobID(r.Context(), id)
+	if err != nil {
+		slog.Error("Failed to fetch job results", "job_id", id, "error", err)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -228,7 +229,7 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteJob(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/v1/jobs/")
+	id := r.PathValue("id")
 	if id == "" {
 		http.Error(w, "missing job id", http.StatusBadRequest)
 		return

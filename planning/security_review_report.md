@@ -1,6 +1,6 @@
 # Security Review Report: GoSpeedTest
-**Date:** May 20, 2026  
-**Status:** Fully Resolved & Mitigated  
+**Date:** May 20, 2026 (updated July 7, 2026)  
+**Status:** Resolved in code, except two items mitigated only at the deployment layer  
 **Target:** Production-Readiness API Deployment  
 
 ---
@@ -11,9 +11,14 @@ GoSpeedTest is a robust, well-structured, and highly optimized toolkit. Paramete
 
 A comprehensive security audit identified several critical security vulnerabilities: **blind SSRF in webhooks**, **SSRF bypasses via HTTP redirects**, **timing attacks** on API key authentication, and **Denial of Service (DoS)** vectors via unlimited iterations.
 
-**As of May 20, 2026, all of these vulnerabilities have been fully resolved and mitigated** in the core codebase. Robust test coverage has been established using Test-Driven Development (TDD) to prevent regressions. GoSpeedTest is now secure and fully ready for production API deployment.
+**As of July 7, 2026 all six findings have code-level mitigations** (webhook URL validation, redirect-aware clients, constant-time key comparison, the `runs` cap, DNS rebinding, and the Chrome sandbox), with test coverage to prevent regressions.
 
-Below is a detailed analysis of these vulnerabilities, the exact mitigations applied to resolve them, and their verification details.
+**Two mechanisms still depend partly on deployment topology and must not be treated as fully closed at the application layer:**
+
+- **DNS rebinding for Chrome tiers (§3)** — the HTTP tiers are now protected by a connect-time IP guard (the network collector and webhook worker dial through a hardened `http.Client` whose dialer validates the resolved destination IP immediately before the socket opens). Chrome-based tiers cannot be IP-pinned without breaking TLS, so they still rely on network isolation.
+- **Chrome sandbox (§5)** — the sandbox is now enabled by default in code and the container runs non-root with the setuid sandbox helper, but hosts lacking user-namespace support may fall back to the setuid helper or the `GOST_CHROME_NO_SANDBOX` opt-out; defense-in-depth network isolation is still recommended.
+
+Below is a detailed analysis of these vulnerabilities, the mitigations applied, and their current status.
 
 ---
 
@@ -94,6 +99,7 @@ var ssrfSafeClient = &http.Client{
 > [!WARNING]
 > **Severity:** Medium-High  
 > **Impact:** Bypassing local IP restrictions.
+> **Status: Fixed in code (HTTP tiers), July 7, 2026.** The network collector and webhook worker now use `validator.NewSafeClient`, whose `net.Dialer.Control` hook validates the resolved destination IP at connect time (gated by `GOST_ALLOW_PRIVATE_IPS`). Because the check runs on the exact address being dialed, the rebinding TOCTOU window is closed. Chrome-based tiers still depend on network isolation.
 
 #### The Problem:
 `ValidateURL` performs a DNS lookup to check if the host resolves to a private IP, and then the HTTP client resolves it *again* to make the request. This is a classic Time-of-Check to Time-of-Use (TOCTOU) bug. An attacker can set up a custom DNS server that resolves to a public IP (e.g. `8.8.8.8`) on the first query (validation) and a private IP (e.g., `127.0.0.1`) on the second query (the actual HTTP request), with a TTL of 0.
@@ -140,6 +146,7 @@ if subtle.ConstantTimeCompare([]byte(key), []byte(s.apiKey)) != 1 {
 > [!WARNING]
 > **Severity:** Medium-High (Depending on host privileges)  
 > **Impact:** Host compromise / Remote Code Execution (RCE) via Chrome exploits.
+> **Status: Hardened, July 7, 2026.** The Chrome sandbox is now ENABLED by default — `chromedp.NoSandbox` is only added when `GOST_CHROME_NO_SANDBOX=true` is set explicitly (logged as a warning). The `Dockerfile` runs as a non-root user (`gost`) and keeps the setuid sandbox helper (`chrome-sandbox`, mode 4755) so the sandbox functions unprivileged. Deployments on hosts without user-namespace support may still need the setuid helper (kept) or, as a last resort, the opt-out flag.
 
 #### The Problem:
 In `internal/chrome/manager.go`, the allocator options include:
@@ -188,11 +195,13 @@ if req.Runs > 10 {
 | Feature | Verified Safe? | Details / Status |
 |---|---|---|
 | **SQL Injection** | ✅ Yes | Strictly parameterized using standard `sql.DB` placeholders (`?`). Safe. |
-| **SSRF in Speed Test Target** | ✅ Yes | **Fully Resolved.** Target host validation is active and redirect-aware (`http.Client` redirects validated at each hop). DNS rebinding is mitigated in standard operations and Dockerized deployments. |
-| **SSRF in Webhooks** | ✅ Yes | **Fully Resolved.** `WebhookURL` is validated at job submission, and the background webhook worker uses a custom redirect-aware client. |
-| **API Auth Strength** | ✅ Yes | **Fully Resolved.** Authenticated routes are protected with `crypto/subtle.ConstantTimeCompare` key validation. |
-| **Resource Exhaustion** | ✅ Yes | **Fully Resolved.** Job requests hard-capped to a maximum of 10 runs per job. |
-| **Log Injection** | ✅ Yes | Uses structured logging (`slog`) with JSON formatting. Sanitizes payload logs. |
+| **SSRF in Speed Test Target (redirects)** | ✅ Yes | **Resolved in code.** Target host validation is active and redirect-aware (`http.Client` redirects validated at each hop). |
+| **DNS Rebinding / TOCTOU** | ✅ Yes (HTTP tiers) | **Resolved in code.** Connect-time IP validation via a hardened dialer (`validator.NewSafeClient`) closes the TOCTOU window. Chrome tiers still rely on network isolation. |
+| **SSRF in Webhooks** | ✅ Yes | **Resolved in code.** `WebhookURL` is validated at job submission, and the background webhook worker uses a custom redirect-aware client. |
+| **API Auth Strength** | ✅ Yes | **Resolved in code.** Authenticated routes are protected with `crypto/subtle.ConstantTimeCompare` key validation. |
+| **Resource Exhaustion (runs)** | ✅ Yes | **Resolved in code.** Job requests hard-capped to a maximum of 10 runs per job. |
+| **Chrome Sandbox** | ✅ Yes | **Hardened.** Sandbox enabled by default (opt-out via `GOST_CHROME_NO_SANDBOX`); container runs non-root with the setuid sandbox helper (see §5). |
+| **Log Injection** | ✅ Yes | Uses structured logging (`slog`) with JSON formatting. |
 
 ---
 

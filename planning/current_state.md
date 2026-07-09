@@ -1,6 +1,6 @@
 # Project Status: GoSpeedTest
 
-**Current Date:** May 20, 2026
+**Current Date:** July 7, 2026
 **Version:** v1.0.0 (SQLite-Only Stable)
 
 ---
@@ -36,8 +36,21 @@
   - [x] Implement constant-time comparison (`subtle.ConstantTimeCompare`) for API Key authentication to prevent timing attacks.
   - [x] Enforce an upper limit of 10 on the user-supplied `runs` parameter to prevent DoS.
 
+### Code Quality Audit (July 7, 2026)
+Fixed during a code-quality audit pass:
+- [x] Enabled the SQLite `foreign_keys` pragma so `results` cascade-deletes fire; `DeleteJob` now also clears `webhook_deliveries` (previously both were orphaned on delete).
+- [x] Enforced the per-job `TimeoutS` in the daemon worker and added a network-collector client timeout (a hung target could previously pin a worker forever).
+- [x] `chrome.NewContext` now propagates the caller's context deadline to the tab (browser/vitals timeouts were previously ignored).
+- [x] Replaced the webhook "scan 100 rows to find one" lookup with `GetWebhookByID`.
+- [x] Removed the `Submit`/`Stop` send-on-closed-channel race.
+- [x] Strongly-typed `Result` metric fields and `GetHistory` (were `interface{}`).
+- [x] Fixed the CLI smoke test (hardcoded macOS Go path) and gated Chrome-dependent tests behind `-short`; added a CI workflow.
+- [x] **Closed DNS-rebinding (TOCTOU) for HTTP tiers:** the network collector and webhook worker dial through `validator.NewSafeClient`, which validates the resolved destination IP at connect time (gated by `GOST_ALLOW_PRIVATE_IPS`). See `security_review_report.md` §3.
+- [x] **Hardened the Chrome sandbox:** enabled by default in code (opt-out via `GOST_CHROME_NO_SANDBOX`); the `Dockerfile` now runs as a non-root user with the setuid sandbox helper. See `security_review_report.md` §5.
+
 ### Pending
 - [ ] Distributed workers.
+- [ ] **Security defense-in-depth (deployment):** network isolation is still recommended — Chrome-tier DNS rebinding and the Chrome sandbox on hosts without user namespaces both benefit from it. See `security_review_report.md` §3 and §5.
 
 ---
 

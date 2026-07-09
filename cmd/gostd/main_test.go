@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"net/http"
 	"os"
 	"testing"
@@ -9,9 +8,11 @@ import (
 )
 
 func TestGostdStartup(t *testing.T) {
-	// Simple smoke test to see if the server starts
-	// Use environment variables for config
-	os.Setenv("GOST_LISTEN_ADDR", "localhost:9090")
+	// Simple smoke test to see if the server starts.
+	// Bind and dial an explicit IPv4 address so the client and server can't end
+	// up on different address families (localhost may resolve to ::1).
+	const addr = "127.0.0.1:9090"
+	os.Setenv("GOST_LISTEN_ADDR", addr)
 	os.Setenv("DATABASE_URL", ":memory:") // Use in-memory SQLite for testing
 
 	// Mock command line args
@@ -20,23 +21,27 @@ func TestGostdStartup(t *testing.T) {
 		main()
 	}()
 
-	// Give it some time to start
-	time.Sleep(5 * time.Second)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
+	// Poll the health endpoint until the server is listening, rather than
+	// racing a fixed sleep against startup.
+	client := &http.Client{Timeout: 1 * time.Second}
+	healthURL := "http://" + addr + "/v1/health"
 
-	req, _ := http.NewRequestWithContext(ctx, "GET", "http://localhost:9090/v1/jobs", nil)
-	client := &http.Client{}
-	
-	// We expect 404 because /v1/jobs GET is not implemented yet in NewServeMux
-	// but the server should respond.
-	resp, err := client.Do(req)
+	var resp *http.Response
+	var err error
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err = client.Get(healthURL)
+		if err == nil {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 	if err != nil {
-		t.Fatalf("Failed to connect to gostd server: %v", err)
+		t.Fatalf("Failed to connect to gostd server after startup window: %v", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("Expected response from server, got status: %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected health check 200 from server, got status: %d", resp.StatusCode)
 	}
 }

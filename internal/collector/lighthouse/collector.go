@@ -11,13 +11,13 @@ import (
 
 // Result represents the metrics collected from Google PageSpeed Insights.
 type Result struct {
-	Performance    float64 `json:"performance"`
-	Accessibility  float64 `json:"accessibility"`
-	BestPractices  float64 `json:"best_practices"`
-	SEO            float64 `json:"seo"`
-	PWA            float64 `json:"pwa,omitempty"`
-	FetchTime      string  `json:"fetch_time"`
-	LighthouseVer  string  `json:"lighthouse_version"`
+	Performance   float64 `json:"performance"`
+	Accessibility float64 `json:"accessibility"`
+	BestPractices float64 `json:"best_practices"`
+	SEO           float64 `json:"seo"`
+	PWA           float64 `json:"pwa,omitempty"`
+	FetchTime     string  `json:"fetch_time"`
+	LighthouseVer string  `json:"lighthouse_version"`
 }
 
 var psiEndpoint = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
@@ -41,7 +41,7 @@ func Collect(ctx context.Context, targetURL string, apiKey string) (*Result, err
 	q.Add("category", "best-practices")
 	q.Add("category", "seo")
 	q.Add("category", "pwa")
-	
+
 	if apiKey != "" {
 		q.Set("key", apiKey)
 	}

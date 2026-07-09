@@ -1,13 +1,14 @@
 package main
 
 import (
-        "net/http"
-        "net/http/httptest"
-        "os"
-        "os/exec"
-        "strings"
-        "testing"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"strings"
+	"testing"
 )
+
 func TestGostCLI(t *testing.T) {
 	// Setup test server
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -16,8 +17,10 @@ func TestGostCLI(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	// Build the CLI binary (temporary)
-	cmd := exec.Command("/opt/homebrew/bin/go", "run", "main.go", "-u", ts.URL, "-f", "json")
+	// Run the CLI against the test server. Use the network tier only so the
+	// test does not require a headless Chrome install, and resolve "go" from
+	// PATH rather than a hardcoded path.
+	cmd := exec.Command("go", "run", ".", "-u", ts.URL, "-t", "network", "-f", "json")
 	cmd.Dir = "." // Current directory cmd/gost
 	cmd.Env = append(os.Environ(), "GOST_ALLOW_PRIVATE_IPS=true")
 	output, err := cmd.CombinedOutput()

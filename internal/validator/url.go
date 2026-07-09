@@ -37,7 +37,7 @@ func ValidateURL(targetURL string) error {
 		}
 	}
 
-	allowPrivate := os.Getenv("GOST_ALLOW_PRIVATE_IPS") == "true"
+	allowPrivate := allowPrivateIPs()
 
 	for _, ip := range ips {
 		if !allowPrivate && isPrivateIP(ip) {
@@ -50,4 +50,10 @@ func ValidateURL(targetURL string) error {
 
 func isPrivateIP(ip net.IP) bool {
 	return ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
+}
+
+// allowPrivateIPs reports whether the private-IP guard has been disabled via
+// the GOST_ALLOW_PRIVATE_IPS escape hatch (intended for local testing).
+func allowPrivateIPs() bool {
+	return os.Getenv("GOST_ALLOW_PRIVATE_IPS") == "true"
 }

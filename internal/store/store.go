@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/AdrianTJ/gospeedtest/internal/collector/browser"
+	"github.com/AdrianTJ/gospeedtest/internal/collector/lighthouse"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
+	"github.com/AdrianTJ/gospeedtest/internal/collector/vitals"
 	"github.com/AdrianTJ/gospeedtest/internal/store/migrations"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -42,27 +45,35 @@ type Job struct {
 
 // Result represents the metrics collected for a single run of a job.
 type Result struct {
-	ID          string          `json:"id"`
-	JobID       string          `json:"job_id"`
-	RunIndex    int             `json:"run_index"`
-	Network     *network.Result `json:"network,omitempty"`
-	Browser     interface{}     `json:"browser,omitempty"`
-	Vitals      interface{}     `json:"vitals,omitempty"`
-	Lighthouse  interface{}     `json:"lighthouse,omitempty"`
-	CollectedAt time.Time       `json:"collected_at"`
+	ID          string             `json:"id"`
+	JobID       string             `json:"job_id"`
+	RunIndex    int                `json:"run_index"`
+	Network     *network.Result    `json:"network,omitempty"`
+	Browser     *browser.Result    `json:"browser,omitempty"`
+	Vitals      *vitals.Result     `json:"vitals,omitempty"`
+	Lighthouse  *lighthouse.Result `json:"lighthouse,omitempty"`
+	CollectedAt time.Time          `json:"collected_at"`
+}
+
+// History summarizes aggregate metrics for all recorded runs of a URL.
+type History struct {
+	URL        string  `json:"url"`
+	TestCount  int     `json:"test_count"`
+	AvgTTFBMS  float64 `json:"avg_ttfb_ms"`
+	AvgTotalMS float64 `json:"avg_total_ms"`
 }
 
 // WebhookDelivery tracks the state of a webhook notification.
 type WebhookDelivery struct {
-	ID          string    `json:"id"`
-	JobID       string    `json:"job_id"`
-	URL         string    `json:"url"`
-	Payload     []byte    `json:"payload"`
-	Attempts    int       `json:"attempts"`
+	ID          string     `json:"id"`
+	JobID       string     `json:"job_id"`
+	URL         string     `json:"url"`
+	Payload     []byte     `json:"payload"`
+	Attempts    int        `json:"attempts"`
 	LastAttempt *time.Time `json:"last_attempt,omitempty"`
 	NextAttempt *time.Time `json:"next_attempt,omitempty"`
-	Status      string    `json:"status"` // PENDING, SUCCESS, FAILED
-	CreatedAt   time.Time `json:"created_at"`
+	Status      string     `json:"status"` // PENDING, SUCCESS, FAILED
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 // Store defines the interface for persisting jobs and results.
@@ -73,12 +84,13 @@ type Store interface {
 	ListJobs(ctx context.Context, limit int) ([]Job, error)
 	SaveResult(ctx context.Context, result *Result) error
 	GetResultsByJobID(ctx context.Context, jobID string) ([]Result, error)
-	GetHistory(ctx context.Context, url string) (interface{}, error)
+	GetHistory(ctx context.Context, url string) (*History, error)
 	DeleteJob(ctx context.Context, id string) error
 
 	// Webhooks
 	EnqueueWebhook(ctx context.Context, delivery *WebhookDelivery) error
 	GetPendingWebhooks(ctx context.Context, limit int) ([]WebhookDelivery, error)
+	GetWebhookByID(ctx context.Context, id string) (*WebhookDelivery, error)
 	UpdateWebhookStatus(ctx context.Context, id string, status string, attempts int, lastAttempt *time.Time, nextAttempt *time.Time) error
 
 	Close() error
@@ -90,8 +102,9 @@ type sqliteStore struct {
 
 // NewStore initializes a new SQLite store and creates the schema.
 func NewStore(dsn string) (Store, error) {
-	// Enable WAL mode for better concurrency
-	db, err := sql.Open("sqlite3", dsn+"?_journal_mode=WAL&_synchronous=NORMAL")
+	// Enable WAL mode for better concurrency, and foreign keys so that
+	// ON DELETE CASCADE actually fires (SQLite leaves them off by default).
+	db, err := sql.Open("sqlite3", dsn+"?_journal_mode=WAL&_synchronous=NORMAL&_foreign_keys=on")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite db: %w", err)
 	}
@@ -313,7 +326,7 @@ func (s *sqliteStore) GetResultsByJobID(ctx context.Context, jobID string) ([]Re
 	return results, nil
 }
 
-func (s *sqliteStore) GetHistory(ctx context.Context, url string) (interface{}, error) {
+func (s *sqliteStore) GetHistory(ctx context.Context, url string) (*History, error) {
 	query := `
 		SELECT 
 			COUNT(*) as test_count,
@@ -331,15 +344,20 @@ func (s *sqliteStore) GetHistory(ctx context.Context, url string) (interface{}, 
 		return nil, err
 	}
 
-	return map[string]interface{}{
-		"url":          url,
-		"test_count":   count,
-		"avg_ttfb_ms":  ttfb.Float64,
-		"avg_total_ms": total.Float64,
+	return &History{
+		URL:        url,
+		TestCount:  count,
+		AvgTTFBMS:  ttfb.Float64,
+		AvgTotalMS: total.Float64,
 	}, nil
 }
 
 func (s *sqliteStore) DeleteJob(ctx context.Context, id string) error {
+	// results cascade via the foreign key, but webhook_deliveries has no FK,
+	// so remove its rows explicitly to avoid orphaned deliveries.
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM webhook_deliveries WHERE job_id = ?", id); err != nil {
+		return err
+	}
 	_, err := s.db.ExecContext(ctx, "DELETE FROM jobs WHERE id = ?", id)
 	return err
 }
@@ -381,6 +399,28 @@ func (s *sqliteStore) GetPendingWebhooks(ctx context.Context, limit int) ([]Webh
 		deliveries = append(deliveries, d)
 	}
 	return deliveries, nil
+}
+
+func (s *sqliteStore) GetWebhookByID(ctx context.Context, id string) (*WebhookDelivery, error) {
+	var d WebhookDelivery
+	var last, next sql.NullTime
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, job_id, url, payload, attempts, last_attempt, next_attempt, status, created_at
+		 FROM webhook_deliveries WHERE id = ?`, id).Scan(
+		&d.ID, &d.JobID, &d.URL, &d.Payload, &d.Attempts, &last, &next, &d.Status, &d.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if last.Valid {
+		d.LastAttempt = &last.Time
+	}
+	if next.Valid {
+		d.NextAttempt = &next.Time
+	}
+	return &d, nil
 }
 
 func (s *sqliteStore) UpdateWebhookStatus(ctx context.Context, id string, status string, attempts int, last *time.Time, next *time.Time) error {

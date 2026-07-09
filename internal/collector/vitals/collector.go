@@ -22,7 +22,7 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(url),
 		chromedp.WaitReady("body", chromedp.ByQuery),
-		chromedp.Sleep(2 * time.Second),
+		chromedp.Sleep(2*time.Second),
 		chromedp.Evaluate(`(function() {
 			const t = performance.timing;
 			const p = performance.getEntriesByType('paint');

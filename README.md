@@ -80,6 +80,8 @@ GoSpeedTest follows a strict configuration hierarchy: **Flags > Environment Vari
 | `DATABASE_URL` | `gospeedtest.db` | SQLite database path |
 | `GOST_API_KEY` | *(unset)* | API key for authentication |
 | `GOST_WORKERS` | `4` | Number of concurrent workers |
+| `GOST_ALLOW_PRIVATE_IPS` | `false` | Allow tests/webhooks to target private/loopback IPs (local testing only) |
+| `GOST_CHROME_NO_SANDBOX` | `false` | Disable the Chrome sandbox (only in trusted, isolated environments that can't support it) |
 
 ---
 

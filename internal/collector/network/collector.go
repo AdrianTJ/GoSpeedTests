@@ -12,7 +12,6 @@ import (
 	"github.com/AdrianTJ/gospeedtest/internal/validator"
 )
 
-
 // Result represents the metrics collected at the network level.
 type Result struct {
 	DNSLookupMS    float64 `json:"dns_lookup_ms"`
@@ -28,10 +27,10 @@ type Result struct {
 // Collect performs a network-level timing trace for the given URL.
 func Collect(ctx context.Context, url string) (*Result, error) {
 	var (
-		dnsStart, dnsDone           time.Time
-		connStart, connDone         time.Time
-		tlsStart, tlsDone           time.Time
-		gotFirstByte, gotResponse   time.Time
+		dnsStart, dnsDone         time.Time
+		connStart, connDone       time.Time
+		tlsStart, tlsDone         time.Time
+		gotFirstByte, gotResponse time.Time
 	)
 
 	trace := &httptrace.ClientTrace{
@@ -43,9 +42,9 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 			}
 			connStart = time.Now()
 		},
-		ConnectDone: func(_, _ string, _ error) { connDone = time.Now() },
-		TLSHandshakeStart: func() { tlsStart = time.Now() },
-		TLSHandshakeDone:  func(_ tls.ConnectionState, _ error) { tlsDone = time.Now() },
+		ConnectDone:          func(_, _ string, _ error) { connDone = time.Now() },
+		TLSHandshakeStart:    func() { tlsStart = time.Now() },
+		TLSHandshakeDone:     func(_ tls.ConnectionState, _ error) { tlsDone = time.Now() },
 		GotFirstResponseByte: func() { gotFirstByte = time.Now() },
 	}
 
@@ -55,23 +54,16 @@ func Collect(ctx context.Context, url string) (*Result, error) {
 	}
 
 	start := time.Now()
-	client := &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 10 {
-				return fmt.Errorf("stopped after 10 redirects")
-			}
-			if err := validator.ValidateURL(req.URL.String()); err != nil {
-				return fmt.Errorf("redirect blocked: %w", err)
-			}
-			return nil
-		},
-	}
+	// SSRF-hardened client: the dialer blocks connections to private IPs at
+	// connect time (closing the DNS-rebinding window), redirects are
+	// re-validated at each hop, and the 30s timeout guards against hung
+	// targets even when the caller passes a context without a deadline.
+	client := validator.NewSafeClient(30 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-
 
 	n, err := io.Copy(io.Discard, resp.Body)
 	if err != nil {

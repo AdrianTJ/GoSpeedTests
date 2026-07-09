@@ -23,7 +23,7 @@ func TestConfigLoad(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "config-test")
 	defer os.RemoveAll(tmpDir)
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	
+
 	yamlData := `
 listen_addr: ":9090"
 workers: 8

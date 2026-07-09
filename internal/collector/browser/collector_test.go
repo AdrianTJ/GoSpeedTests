@@ -11,6 +11,10 @@ import (
 )
 
 func TestCollect(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping browser test (requires headless Chrome) in short mode")
+	}
+
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.Write([]byte(`<!DOCTYPE html>
@@ -46,6 +50,6 @@ func TestCollect(t *testing.T) {
 		t.Errorf("expected at least 1 resource (the main HTML), got %d", result.ResourceCount)
 	}
 
-	t.Logf("Result: DOMContentLoaded: %.2fms, PageLoad: %.2fms, Resources: %d", 
+	t.Logf("Result: DOMContentLoaded: %.2fms, PageLoad: %.2fms, Resources: %d",
 		result.DOMContentLoadedMS, result.PageLoadMS, result.ResourceCount)
 }

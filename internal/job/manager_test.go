@@ -12,6 +12,14 @@ import (
 	"github.com/AdrianTJ/gospeedtest/internal/store"
 )
 
+// TestMain allows private IPs by default: these tests drive jobs and webhooks
+// against loopback httptest servers. The SSRF test overrides this with
+// t.Setenv to assert that private-IP connections are blocked.
+func TestMain(m *testing.M) {
+	os.Setenv("GOST_ALLOW_PRIVATE_IPS", "true")
+	os.Exit(m.Run())
+}
+
 func TestJobManager(t *testing.T) {
 	// Setup store
 	tmpDir, _ := os.MkdirTemp("", "job-manager-test")
@@ -154,8 +162,8 @@ func TestJobManager_WebhookRedirectSSRF(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Test case 1: SSRF redirect blocked (GOST_ALLOW_PRIVATE_IPS is false/unset)
-	os.Unsetenv("GOST_ALLOW_PRIVATE_IPS")
+	// Test case 1: SSRF redirect blocked (private-IP guard active)
+	t.Setenv("GOST_ALLOW_PRIVATE_IPS", "false")
 	_, err := m.Submit(ctx, tsMain.URL, []string{"network"}, 1, tsRedirector.URL)
 	if err != nil {
 		t.Fatalf("failed to submit job: %v", err)
@@ -170,8 +178,7 @@ func TestJobManager_WebhookRedirectSSRF(t *testing.T) {
 	}
 
 	// Test case 2: SSRF redirect allowed (GOST_ALLOW_PRIVATE_IPS is true)
-	os.Setenv("GOST_ALLOW_PRIVATE_IPS", "true")
-	defer os.Unsetenv("GOST_ALLOW_PRIVATE_IPS")
+	t.Setenv("GOST_ALLOW_PRIVATE_IPS", "true")
 
 	targetHit2 := make(chan bool, 1)
 	tsTarget2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -198,4 +205,3 @@ func TestJobManager_WebhookRedirectSSRF(t *testing.T) {
 		t.Error("timed out waiting for webhook to redirect and hit target")
 	}
 }
-

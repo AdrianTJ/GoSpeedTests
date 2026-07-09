@@ -31,7 +31,7 @@ func Run(ctx context.Context, db *sql.DB, migrations []Migration) error {
 	for _, m := range migrations {
 		if m.Version > currentVersion {
 			slog.Info("Applying migration", "version", m.Version)
-			
+
 			tx, err := db.BeginTx(ctx, nil)
 			if err != nil {
 				return err
