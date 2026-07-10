@@ -88,3 +88,46 @@ func TestDeleteJobRemovesChildren(t *testing.T) {
 		t.Errorf("expected webhook deliveries to be removed, got %d orphaned rows", whCount)
 	}
 }
+
+// TestRecoverInterruptedJobs verifies stale RUNNING/PENDING jobs are failed on
+// startup while terminal jobs are left untouched.
+func TestRecoverInterruptedJobs(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "recover")
+	defer os.RemoveAll(tmpDir)
+	s, err := NewStore(filepath.Join(tmpDir, "test.db"))
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+
+	mk := func(id string, st JobStatus) {
+		if err := s.CreateJob(ctx, &Job{ID: id, URL: "http://x", Status: st, Tiers: []string{"network"}, CreatedAt: time.Now()}); err != nil {
+			t.Fatalf("create %s: %v", id, err)
+		}
+	}
+	mk("jb_run", StatusRunning)
+	mk("jb_pend", StatusPending)
+	mk("jb_done", StatusCompleted)
+
+	n, err := s.RecoverInterruptedJobs(ctx)
+	if err != nil {
+		t.Fatalf("recover: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("expected 2 recovered, got %d", n)
+	}
+	for _, id := range []string{"jb_run", "jb_pend"} {
+		j, _ := s.GetJob(ctx, id)
+		if j.Status != StatusFailed {
+			t.Errorf("%s: expected FAILED, got %s", id, j.Status)
+		}
+		if j.Error == nil {
+			t.Errorf("%s: expected an error message", id)
+		}
+	}
+	done, _ := s.GetJob(ctx, "jb_done")
+	if done.Status != StatusCompleted {
+		t.Errorf("terminal job should be untouched, got %s", done.Status)
+	}
+}

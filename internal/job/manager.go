@@ -30,32 +30,42 @@ const (
 
 // Manager handles job orchestration and the worker pool.
 type Manager struct {
-	store        store.Store
-	chrome       *chrome.Manager
-	jobQueue     chan *store.Job
-	webhookChan  chan string // deliveryID
-	workerCount  int
-	googleAPIKey string
-	wg           sync.WaitGroup
-	ctx          context.Context
-	cancel       context.CancelFunc
-	mu           sync.Mutex
-	pendingJobs  map[string]struct{}
+	store           store.Store
+	chrome          *chrome.Manager
+	jobQueue        chan *store.Job
+	webhookChan     chan string // deliveryID
+	workerCount     int
+	googleAPIKey    string
+	defaultTimeoutS int
+	wg              sync.WaitGroup
+	ctx             context.Context
+	cancel          context.CancelFunc
+	mu              sync.Mutex
+	pendingJobs     map[string]struct{}
 }
 
 // NewManager creates a new job manager.
 func NewManager(s store.Store, workerCount int, queueDepth int, googleAPIKey string) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Manager{
-		store:        s,
-		chrome:       chrome.NewManager(),
-		jobQueue:     make(chan *store.Job, queueDepth),
-		webhookChan:  make(chan string, 100),
-		workerCount:  workerCount,
-		googleAPIKey: googleAPIKey,
-		ctx:          ctx,
-		cancel:       cancel,
-		pendingJobs:  make(map[string]struct{}),
+		store:           s,
+		chrome:          chrome.NewManager(),
+		jobQueue:        make(chan *store.Job, queueDepth),
+		webhookChan:     make(chan string, 100),
+		workerCount:     workerCount,
+		googleAPIKey:    googleAPIKey,
+		defaultTimeoutS: 60,
+		ctx:             ctx,
+		cancel:          cancel,
+		pendingJobs:     make(map[string]struct{}),
+	}
+}
+
+// SetDefaultTimeout overrides the default per-job timeout (seconds) applied when
+// a submission does not specify one. Values <= 0 are ignored.
+func (m *Manager) SetDefaultTimeout(seconds int) {
+	if seconds > 0 {
+		m.defaultTimeoutS = seconds
 	}
 }
 
@@ -81,15 +91,27 @@ func (m *Manager) Stop() {
 	m.chrome.Close()
 }
 
-// Submit enqueues a new job for execution.
+// Submit enqueues a new job for execution using the manager's default timeout.
 func (m *Manager) Submit(ctx context.Context, url string, tiers []string, runs int, webhookURL string) (*store.Job, error) {
+	return m.SubmitWithTimeout(ctx, url, tiers, runs, webhookURL, 0)
+}
+
+// SubmitWithTimeout enqueues a new job with a specific per-run timeout (seconds).
+// A timeoutS <= 0 falls back to the manager default.
+func (m *Manager) SubmitWithTimeout(ctx context.Context, url string, tiers []string, runs int, webhookURL string, timeoutS int) (*store.Job, error) {
+	if timeoutS <= 0 {
+		timeoutS = m.defaultTimeoutS
+	}
+	if timeoutS <= 0 {
+		timeoutS = 60
+	}
 	job := &store.Job{
 		ID:         "jb_" + uuid.New().String()[:8],
 		URL:        url,
 		Status:     store.StatusPending,
 		Tiers:      tiers,
 		Runs:       runs,
-		TimeoutS:   60, // Default
+		TimeoutS:   timeoutS,
 		WebhookURL: webhookURL,
 		CreatedAt:  time.Now(),
 	}
@@ -98,25 +120,31 @@ func (m *Manager) Submit(ctx context.Context, url string, tiers []string, runs i
 		return nil, fmt.Errorf("failed to create job in store: %w", err)
 	}
 
+	// enqueueFailed cleans up the just-created state so a rejected submission
+	// leaves no orphaned PENDING row that no worker will ever process.
+	enqueueFailed := func(reason string) (*store.Job, error) {
+		m.mu.Lock()
+		delete(m.pendingJobs, job.ID)
+		m.mu.Unlock()
+		if derr := m.store.DeleteJob(ctx, job.ID); derr != nil {
+			slog.Error("Failed to clean up rejected job", "job_id", job.ID, "error", derr)
+		}
+		return nil, fmt.Errorf("%s", reason)
+	}
+
 	m.mu.Lock()
 	m.pendingJobs[job.ID] = struct{}{}
 	m.mu.Unlock()
 
 	if m.ctx.Err() != nil {
-		m.mu.Lock()
-		delete(m.pendingJobs, job.ID)
-		m.mu.Unlock()
-		return nil, fmt.Errorf("manager is shutting down")
+		return enqueueFailed("manager is shutting down")
 	}
 
 	select {
 	case m.jobQueue <- job:
 		return job, nil
 	default:
-		m.mu.Lock()
-		delete(m.pendingJobs, job.ID)
-		m.mu.Unlock()
-		return nil, fmt.Errorf("job queue is full")
+		return enqueueFailed("job queue is full")
 	}
 }
 
@@ -232,10 +260,14 @@ func (m *Manager) processJob(job *store.Job) {
 		if hasTier("network") {
 			tiersRun++
 			netRes, err := network.Collect(runCtx, job.URL)
+			// Keep the measured timing even when the target returned an HTTP
+			// error status (Collect returns a populated result alongside the
+			// error for status >= 400) — the metrics are still useful.
+			if netRes != nil {
+				resultRecord.Network = netRes
+			}
 			if err != nil {
 				fail("network", err)
-			} else {
-				resultRecord.Network = netRes
 			}
 		}
 

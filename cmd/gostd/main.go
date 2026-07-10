@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/AdrianTJ/gospeedtest/internal/api"
 	"github.com/AdrianTJ/gospeedtest/internal/config"
@@ -53,17 +57,44 @@ func main() {
 		slog.Error("Failed to initialize store", "error", err)
 		os.Exit(1)
 	}
-	defer s.Close()
+
+	// Fail any jobs left RUNNING/PENDING by a previous process (crash/restart)
+	// so they don't appear stuck forever.
+	if n, err := s.RecoverInterruptedJobs(context.Background()); err != nil {
+		slog.Error("Failed to recover interrupted jobs", "error", err)
+	} else if n > 0 {
+		slog.Warn("Recovered interrupted jobs from a previous run", "count", n)
+	}
 
 	m := job.NewManager(s, cfg.Workers, cfg.QueueDepth, cfg.GoogleAPIKey)
+	m.SetDefaultTimeout(cfg.TimeoutS)
 	m.Start()
-	defer m.Stop()
 
 	srv := api.NewServer(m, s, cfg.APIKey, cfg.AllowInsecure)
+	httpServer := &http.Server{Addr: cfg.ListenAddr, Handler: srv.Routes()}
 
-	slog.Info("API server starting", "addr", cfg.ListenAddr)
-	if err := http.ListenAndServe(cfg.ListenAddr, srv.Routes()); err != nil {
-		slog.Error("Server failed", "error", err)
-		os.Exit(1)
+	go func() {
+		slog.Info("API server starting", "addr", cfg.ListenAddr)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("Server failed", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	// Graceful shutdown: stop accepting connections, drain workers, close the DB.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	<-sigCh
+	slog.Info("Shutdown signal received; draining")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		slog.Error("HTTP shutdown error", "error", err)
 	}
+	m.Stop()
+	if err := s.Close(); err != nil {
+		slog.Error("Store close error", "error", err)
+	}
+	slog.Info("Shutdown complete")
 }

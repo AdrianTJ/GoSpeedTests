@@ -86,6 +86,7 @@ type Store interface {
 	GetResultsByJobID(ctx context.Context, jobID string) ([]Result, error)
 	GetHistory(ctx context.Context, url string) (*History, error)
 	DeleteJob(ctx context.Context, id string) error
+	RecoverInterruptedJobs(ctx context.Context) (int, error)
 
 	// Webhooks
 	EnqueueWebhook(ctx context.Context, delivery *WebhookDelivery) error
@@ -350,6 +351,22 @@ func (s *sqliteStore) GetHistory(ctx context.Context, url string) (*History, err
 		AvgTTFBMS:  ttfb.Float64,
 		AvgTotalMS: total.Float64,
 	}, nil
+}
+
+// RecoverInterruptedJobs fails any jobs left RUNNING or PENDING by a previous
+// process (e.g. after a crash or restart). Without this, interrupted jobs would
+// stay RUNNING/PENDING forever since no worker ever revisits them. Returns the
+// number of rows recovered.
+func (s *sqliteStore) RecoverInterruptedJobs(ctx context.Context) (int, error) {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE jobs SET status = ?, error = ?, completed_at = ?
+		 WHERE status IN (?, ?)`,
+		StatusFailed, "interrupted by daemon restart", time.Now(), StatusRunning, StatusPending)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }
 
 func (s *sqliteStore) DeleteJob(ctx context.Context, id string) error {

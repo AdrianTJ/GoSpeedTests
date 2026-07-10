@@ -55,6 +55,18 @@ Ran the daemon + CLI end-to-end (`scripts/dogfood.sh`, report in `planning/dogfo
 - [x] Vitals clamps `LCP >= FCP`; CLI now signals failure (exit 1 only when all tiers fail), persists all tiers to `-db`, and starts Chrome only when needed.
 - [x] `docs/openapi.yaml` synced to the implementation (status enum, tiers enum, response shapes, health/ready content types).
 
+### Deep Dogfooding — Round 2 (July 10, 2026)
+Adversarial/failure-path audit (report in `planning/dogfood_report_2026-07_round2.md`) found 12 issues; the meaningful ones are fixed:
+- [x] **Graceful shutdown + crash recovery:** `gostd` now handles SIGINT/SIGTERM (drains via `http.Server.Shutdown`, stops workers, closes the DB) and, on startup, fails any jobs left RUNNING/PENDING by a previous process (`store.RecoverInterruptedJobs`) — they no longer hang forever.
+- [x] **No orphaned PENDING rows:** a rejected submission (queue-full / shutting down) now deletes its store row.
+- [x] **Tier validation:** unknown tier names are rejected (API → 400; CLI → exit 2) instead of silently producing a COMPLETED empty job.
+- [x] **Per-job timeout is configurable:** the daemon honors `GOST_TIMEOUT_S` as the default and accepts a bounded `timeout_s` in the request (was hardcoded 60).
+- [x] **DELETE of a RUNNING job → 409** (was a 204 that caused an FK violation + silent data loss).
+- [x] **Network metrics preserved on HTTP 4xx/5xx** (were discarded despite being measured).
+- [x] **Request body size cap** (1 MiB) on job submission.
+- Positive: no leaks/races/panics under browser soak + concurrent mutation; redirect cap & loop protection, timeout enforcement, and SSRF/auth all held.
+- Deferred (low severity, documented): list pagination, response-body size cap, credential-in-URL redaction, history URL normalization, CLI `-db` status accuracy.
+
 ### Pending
 - [ ] Distributed workers.
 - [ ] **Security defense-in-depth (deployment):** network isolation is still recommended — Chrome-tier DNS rebinding and the Chrome sandbox on hosts without user namespaces both benefit from it. See `security_review_report.md` §3 and §5.

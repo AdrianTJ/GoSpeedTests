@@ -38,6 +38,13 @@ func main() {
 
 	config.SetupLogger("info")
 
+	switch *tierPtr {
+	case "network", "browser", "vitals", "lighthouse", "all":
+	default:
+		fmt.Fprintf(os.Stderr, "Error: invalid tier %q (allowed: network, browser, vitals, lighthouse, all)\n", *tierPtr)
+		os.Exit(2)
+	}
+
 	if err := validator.ValidateURL(*urlPtr); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
