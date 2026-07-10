@@ -48,6 +48,34 @@ Fixed during a code-quality audit pass:
 - [x] **Closed DNS-rebinding (TOCTOU) for HTTP tiers:** the network collector and webhook worker dial through `validator.NewSafeClient`, which validates the resolved destination IP at connect time (gated by `GOST_ALLOW_PRIVATE_IPS`). See `security_review_report.md` §3.
 - [x] **Hardened the Chrome sandbox:** enabled by default in code (opt-out via `GOST_CHROME_NO_SANDBOX`); the `Dockerfile` now runs as a non-root user with the setuid sandbox helper. See `security_review_report.md` §5.
 
+### Dogfooding Fixes (July 9, 2026)
+Ran the daemon + CLI end-to-end (`scripts/dogfood.sh`, report in `planning/dogfood_report_2026-07.md`) and fixed the findings:
+- [x] Multi-tier jobs now report `PARTIAL` when some tiers succeed and some fail (was `FAILED`, which hid usable results); `FAILED` only when every attempted tier fails.
+- [x] The daemon logs a warning when running as root (chromedp auto-disables the sandbox); security doc §5 clarified that the non-root Docker user is the real control.
+- [x] Vitals clamps `LCP >= FCP`; CLI now signals failure (exit 1 only when all tiers fail), persists all tiers to `-db`, and starts Chrome only when needed.
+- [x] `docs/openapi.yaml` synced to the implementation (status enum, tiers enum, response shapes, health/ready content types).
+
+### Deep Dogfooding — Round 2 (July 10, 2026)
+Adversarial/failure-path audit (report in `planning/dogfood_report_2026-07_round2.md`) found 12 issues; the meaningful ones are fixed:
+- [x] **Graceful shutdown + crash recovery:** `gostd` now handles SIGINT/SIGTERM (drains via `http.Server.Shutdown`, stops workers, closes the DB) and, on startup, fails any jobs left RUNNING/PENDING by a previous process (`store.RecoverInterruptedJobs`) — they no longer hang forever.
+- [x] **No orphaned PENDING rows:** a rejected submission (queue-full / shutting down) now deletes its store row.
+- [x] **Tier validation:** unknown tier names are rejected (API → 400; CLI → exit 2) instead of silently producing a COMPLETED empty job.
+- [x] **Per-job timeout is configurable:** the daemon honors `GOST_TIMEOUT_S` as the default and accepts a bounded `timeout_s` in the request (was hardcoded 60).
+- [x] **DELETE of a RUNNING job → 409** (was a 204 that caused an FK violation + silent data loss).
+- [x] **Network metrics preserved on HTTP 4xx/5xx** (were discarded despite being measured).
+- [x] **Request body size cap** (1 MiB) on job submission.
+- Positive: no leaks/races/panics under browser soak + concurrent mutation; redirect cap & loop protection, timeout enforcement, and SSRF/auth all held.
+- Deferred (low severity, documented): list pagination, response-body size cap, credential-in-URL redaction, history URL normalization, CLI `-db` status accuracy.
+
+### Code-Quality Pass (July 10, 2026)
+Refactors and test/documentation improvements from an engineering-quality review:
+- [x] **Config validation** (`config.Validate`): the daemon refuses to start on `workers<1`, `queue_depth<1`, or `timeout_s<1` (was: zero workers → silent hang; negative queue depth → `make(chan)` panic).
+- [x] **Single source of truth for tiers** (`internal/tier`): the allowed-tier list, previously duplicated across the API handler, CLI, and manager, now lives in one package.
+- [x] **Lazy Chrome**: the daemon starts headless Chrome on the first browser/vitals job instead of at construction, so a network/lighthouse-only deployment never spawns a browser (and `Manager` is now constructible in tests without Chrome).
+- [x] **DRY**: extracted `store.scanJob` (dedup of `GetJob`/`ListJobs`) and `job.deriveStatus`; named magic numbers (list limit, runs cap, webhook buffer, default timeout).
+- [x] **Tests**: `internal/report` 0%→79%, `internal/config` 47%→73%, new `internal/tier` at 100%; added `deriveStatus`, store read-path, and validation tests. Full suite + `-race` green.
+- [x] **Docs**: README/GETTING_STARTED document `timeout_s`, tier validation, graceful shutdown/recovery, and the new config knobs; `openapi.yaml` re-documents `timeout_s` (now functional).
+
 ### Pending
 - [ ] Distributed workers.
 - [ ] **Security defense-in-depth (deployment):** network isolation is still recommended — Chrome-tier DNS rebinding and the Chrome sandbox on hosts without user namespaces both benefit from it. See `security_review_report.md` §3 and §5.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/AdrianTJ/gospeedtest/internal/chrome"
@@ -16,6 +17,7 @@ import (
 	"github.com/AdrianTJ/gospeedtest/internal/config"
 	"github.com/AdrianTJ/gospeedtest/internal/report"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
+	"github.com/AdrianTJ/gospeedtest/internal/tier"
 	"github.com/AdrianTJ/gospeedtest/internal/validator"
 	"github.com/google/uuid"
 )
@@ -38,6 +40,11 @@ func main() {
 
 	config.SetupLogger("info")
 
+	if !tier.Valid(*tierPtr) {
+		fmt.Fprintf(os.Stderr, "Error: invalid tier %q (allowed: %s)\n", *tierPtr, strings.Join(tier.Supported, ", "))
+		os.Exit(2)
+	}
+
 	if err := validator.ValidateURL(*urlPtr); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -54,8 +61,17 @@ func main() {
 		defer s.Close()
 	}
 
-	chromeMgr := chrome.NewManager()
-	defer chromeMgr.Close()
+	tier := *tierPtr
+
+	// Only spin up Chrome for tiers that actually need it.
+	var chromeMgr *chrome.Manager
+	if tier == "all" || tier == "browser" || tier == "vitals" {
+		chromeMgr = chrome.NewManager()
+		defer chromeMgr.Close()
+	}
+
+	tiersAttempted := 0
+	tiersFailed := 0
 
 	summaries := make([]report.Summary, 0, *runsPtr)
 	for i := 1; i <= *runsPtr; i++ {
@@ -66,33 +82,51 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*timeoutPtr)*time.Second)
 
 		res := report.Summary{URL: *urlPtr}
-		tier := *tierPtr
 
 		if tier == "all" || tier == "network" {
-			netRes, _ := network.Collect(ctx, *urlPtr)
+			tiersAttempted++
+			netRes, err := network.Collect(ctx, *urlPtr)
+			if err != nil {
+				tiersFailed++
+				slog.Error("Network collection failed", "error", err)
+			}
 			res.Network = netRes
 		}
 		if tier == "all" || tier == "browser" {
-			bCtx, bCancel := chromeMgr.NewContext(ctx)
-			browserRes, err := browser.Collect(bCtx, *urlPtr)
-			bCancel()
-			if err != nil {
+			tiersAttempted++
+			if bCtx, bCancel, err := chromeMgr.NewContext(ctx); err != nil {
+				tiersFailed++
 				slog.Error("Browser collection failed", "error", err)
+			} else {
+				browserRes, err := browser.Collect(bCtx, *urlPtr)
+				bCancel()
+				if err != nil {
+					tiersFailed++
+					slog.Error("Browser collection failed", "error", err)
+				}
+				res.Browser = browserRes
 			}
-			res.Browser = browserRes
 		}
 		if tier == "all" || tier == "vitals" {
-			vCtx, vCancel := chromeMgr.NewContext(ctx)
-			vitalsRes, err := vitals.Collect(vCtx, *urlPtr)
-			vCancel()
-			if err != nil {
+			tiersAttempted++
+			if vCtx, vCancel, err := chromeMgr.NewContext(ctx); err != nil {
+				tiersFailed++
 				slog.Error("Vitals collection failed", "error", err)
+			} else {
+				vitalsRes, err := vitals.Collect(vCtx, *urlPtr)
+				vCancel()
+				if err != nil {
+					tiersFailed++
+					slog.Error("Vitals collection failed", "error", err)
+				}
+				res.Vitals = vitalsRes
 			}
-			res.Vitals = vitalsRes
 		}
 		if tier == "all" || tier == "lighthouse" {
+			tiersAttempted++
 			lhRes, err := lighthouse.Collect(ctx, *urlPtr, *gkeyPtr)
 			if err != nil {
+				tiersFailed++
 				slog.Error("Lighthouse collection failed", "error", err)
 			}
 			res.Lighthouse = lhRes
@@ -109,7 +143,8 @@ func main() {
 			})
 			s.SaveResult(context.Background(), &store.Result{
 				ID: "res_" + uuid.New().String()[:8], JobID: jobID, RunIndex: i,
-				Network: res.Network, Lighthouse: res.Lighthouse, CollectedAt: time.Now(),
+				Network: res.Network, Browser: res.Browser, Vitals: res.Vitals,
+				Lighthouse: res.Lighthouse, CollectedAt: time.Now(),
 			})
 		}
 	}
@@ -121,5 +156,15 @@ func main() {
 		report.WriteCSV(os.Stdout, summaries)
 	default:
 		report.WriteText(os.Stdout, summaries)
+	}
+
+	// Signal failure to scripts only when every tier attempt failed; a partial
+	// failure (some tiers succeeded) prints a warning but still exits 0.
+	if tiersAttempted > 0 && tiersFailed == tiersAttempted {
+		fmt.Fprintf(os.Stderr, "Error: all %d tier attempt(s) failed\n", tiersAttempted)
+		os.Exit(1)
+	}
+	if tiersFailed > 0 {
+		fmt.Fprintf(os.Stderr, "Warning: %d of %d tier attempt(s) failed; results are partial\n", tiersFailed, tiersAttempted)
 	}
 }

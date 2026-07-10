@@ -34,7 +34,10 @@ func TestCollect(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	bCtx, bCancel := cm.NewContext(ctx)
+	bCtx, bCancel, err := cm.NewContext(ctx)
+	if err != nil {
+		t.Fatalf("browser unavailable: %v", err)
+	}
 	defer bCancel()
 
 	result, err := Collect(bCtx, ts.URL)

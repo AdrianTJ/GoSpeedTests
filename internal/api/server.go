@@ -6,11 +6,31 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/AdrianTJ/gospeedtest/internal/job"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
+	"github.com/AdrianTJ/gospeedtest/internal/tier"
 	"github.com/AdrianTJ/gospeedtest/internal/validator"
 )
+
+const (
+	maxRequestBody      = 1 << 20 // 1 MiB cap on request bodies
+	maxTimeoutS         = 600     // upper bound on a caller-supplied per-job timeout
+	maxRuns             = 10      // upper bound on the runs parameter
+	defaultJobListLimit = 50      // number of jobs GET /v1/jobs returns
+)
+
+// validateTiers rejects unknown tier names so a typo does not silently produce
+// a COMPLETED job with no results. An empty list is allowed (defaults to network).
+func validateTiers(tiers []string) error {
+	for _, t := range tiers {
+		if !tier.Valid(t) {
+			return fmt.Errorf("invalid tier %q (allowed: %s)", t, strings.Join(tier.Supported, ", "))
+		}
+	}
+	return nil
+}
 
 type Server struct {
 	manager       *job.Manager
@@ -117,9 +137,12 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		URL        string   `json:"url"`
 		Tiers      []string `json:"tiers"`
 		Runs       int      `json:"runs"`
+		TimeoutS   int      `json:"timeout_s"`
 		WebhookURL string   `json:"webhook_url"`
 	}
 
+	// Cap the request body so a large payload cannot exhaust memory.
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
@@ -135,6 +158,11 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validateTiers(req.Tiers); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	if req.WebhookURL != "" {
 		if err := validator.ValidateURL(req.WebhookURL); err != nil {
 			http.Error(w, "invalid webhook_url: "+err.Error(), http.StatusBadRequest)
@@ -146,12 +174,17 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		req.Runs = 1
 	}
 
-	if req.Runs > 10 {
-		http.Error(w, "runs parameter cannot exceed 10", http.StatusBadRequest)
+	if req.Runs > maxRuns {
+		http.Error(w, fmt.Sprintf("runs parameter cannot exceed %d", maxRuns), http.StatusBadRequest)
 		return
 	}
 
-	job, err := s.manager.Submit(r.Context(), req.URL, req.Tiers, req.Runs, req.WebhookURL)
+	if req.TimeoutS < 0 || req.TimeoutS > maxTimeoutS {
+		http.Error(w, fmt.Sprintf("timeout_s must be between 0 and %d", maxTimeoutS), http.StatusBadRequest)
+		return
+	}
+
+	job, err := s.manager.SubmitWithTimeout(r.Context(), req.URL, req.Tiers, req.Runs, req.WebhookURL, req.TimeoutS)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -201,7 +234,7 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
-	jobs, err := s.store.ListJobs(r.Context(), 50)
+	jobs, err := s.store.ListJobs(r.Context(), defaultJobListLimit)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -235,7 +268,15 @@ func (s *Server) handleDeleteJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// First try to cancel it if it's pending
+	// Refuse to delete a job that is actively running: deleting its row would
+	// make the worker's in-flight SaveResult fail a foreign-key constraint and
+	// silently drop the run's data.
+	if job, err := s.store.GetJob(r.Context(), id); err == nil && job != nil && job.Status == store.StatusRunning {
+		http.Error(w, "job is running; cannot delete until it finishes", http.StatusConflict)
+		return
+	}
+
+	// Cancel it first if it's still pending.
 	_ = s.manager.CancelJob(r.Context(), id)
 
 	if err := s.store.DeleteJob(r.Context(), id); err != nil {

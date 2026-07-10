@@ -86,6 +86,7 @@ type Store interface {
 	GetResultsByJobID(ctx context.Context, jobID string) ([]Result, error)
 	GetHistory(ctx context.Context, url string) (*History, error)
 	DeleteJob(ctx context.Context, id string) error
+	RecoverInterruptedJobs(ctx context.Context) (int, error)
 
 	// Webhooks
 	EnqueueWebhook(ctx context.Context, delivery *WebhookDelivery) error
@@ -190,22 +191,25 @@ func (s *sqliteStore) CreateJob(ctx context.Context, job *Job) error {
 	return err
 }
 
-func (s *sqliteStore) GetJob(ctx context.Context, id string) (*Job, error) {
+// jobColumns is the canonical SELECT column list for a jobs row, kept in sync
+// with scanJob's Scan order.
+const jobColumns = "id, url, status, tiers, runs, timeout_s, tags, webhook_url, error, created_at, started_at, completed_at"
+
+// rowScanner is satisfied by both *sql.Row and *sql.Rows.
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+// scanJob scans one jobs row into a Job, decoding the JSON/nullable columns.
+func scanJob(sc rowScanner) (Job, error) {
 	var job Job
 	var tiersJSON, tagsJSON sql.NullString
 	var startedAt, completedAt sql.NullTime
 
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id, url, status, tiers, runs, timeout_s, tags, webhook_url, error, created_at, started_at, completed_at
-		 FROM jobs WHERE id = ?`, id).Scan(
+	if err := sc.Scan(
 		&job.ID, &job.URL, &job.Status, &tiersJSON, &job.Runs, &job.TimeoutS, &tagsJSON, &job.WebhookURL, &job.Error,
-		&job.CreatedAt, &startedAt, &completedAt)
-
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
+		&job.CreatedAt, &startedAt, &completedAt); err != nil {
+		return job, err
 	}
 
 	if tiersJSON.Valid {
@@ -220,7 +224,17 @@ func (s *sqliteStore) GetJob(ctx context.Context, id string) (*Job, error) {
 	if completedAt.Valid {
 		job.CompletedAt = &completedAt.Time
 	}
+	return job, nil
+}
 
+func (s *sqliteStore) GetJob(ctx context.Context, id string) (*Job, error) {
+	job, err := scanJob(s.db.QueryRowContext(ctx, "SELECT "+jobColumns+" FROM jobs WHERE id = ?", id))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
 	return &job, nil
 }
 
@@ -239,8 +253,7 @@ func (s *sqliteStore) UpdateJobStatus(ctx context.Context, id string, status Job
 
 func (s *sqliteStore) ListJobs(ctx context.Context, limit int) ([]Job, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, url, status, tiers, runs, timeout_s, tags, webhook_url, error, created_at, started_at, completed_at
-		 FROM jobs ORDER BY created_at DESC LIMIT ?`, limit)
+		"SELECT "+jobColumns+" FROM jobs ORDER BY created_at DESC LIMIT ?", limit)
 	if err != nil {
 		return nil, err
 	}
@@ -248,32 +261,13 @@ func (s *sqliteStore) ListJobs(ctx context.Context, limit int) ([]Job, error) {
 
 	var jobs []Job
 	for rows.Next() {
-		var job Job
-		var tiersJSON, tagsJSON sql.NullString
-		var startedAt, completedAt sql.NullTime
-
-		err := rows.Scan(
-			&job.ID, &job.URL, &job.Status, &tiersJSON, &job.Runs, &job.TimeoutS, &tagsJSON, &job.WebhookURL, &job.Error,
-			&job.CreatedAt, &startedAt, &completedAt)
+		job, err := scanJob(rows)
 		if err != nil {
 			return nil, err
 		}
-
-		if tiersJSON.Valid {
-			_ = json.Unmarshal([]byte(tiersJSON.String), &job.Tiers)
-		}
-		if tagsJSON.Valid {
-			_ = json.Unmarshal([]byte(tagsJSON.String), &job.Tags)
-		}
-		if startedAt.Valid {
-			job.StartedAt = &startedAt.Time
-		}
-		if completedAt.Valid {
-			job.CompletedAt = &completedAt.Time
-		}
 		jobs = append(jobs, job)
 	}
-	return jobs, nil
+	return jobs, rows.Err()
 }
 
 func (s *sqliteStore) SaveResult(ctx context.Context, result *Result) error {
@@ -350,6 +344,22 @@ func (s *sqliteStore) GetHistory(ctx context.Context, url string) (*History, err
 		AvgTTFBMS:  ttfb.Float64,
 		AvgTotalMS: total.Float64,
 	}, nil
+}
+
+// RecoverInterruptedJobs fails any jobs left RUNNING or PENDING by a previous
+// process (e.g. after a crash or restart). Without this, interrupted jobs would
+// stay RUNNING/PENDING forever since no worker ever revisits them. Returns the
+// number of rows recovered.
+func (s *sqliteStore) RecoverInterruptedJobs(ctx context.Context) (int, error) {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE jobs SET status = ?, error = ?, completed_at = ?
+		 WHERE status IN (?, ?)`,
+		StatusFailed, "interrupted by daemon restart", time.Now(), StatusRunning, StatusPending)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }
 
 func (s *sqliteStore) DeleteJob(ctx context.Context, id string) error {

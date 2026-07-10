@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 
@@ -25,36 +26,56 @@ const (
 	maxWebhookRetries = 5
 	webhookBatchSize  = 10
 	webhookTickRate   = 5 * time.Second
+	webhookChanBuffer = 100 // in-memory notify buffer for immediate delivery
+	defaultTimeoutS   = 60  // fallback per-job timeout in seconds
 )
 
 // Manager handles job orchestration and the worker pool.
 type Manager struct {
-	store        store.Store
-	chrome       *chrome.Manager
-	jobQueue     chan *store.Job
-	webhookChan  chan string // deliveryID
-	workerCount  int
-	googleAPIKey string
-	wg           sync.WaitGroup
-	ctx          context.Context
-	cancel       context.CancelFunc
-	mu           sync.Mutex
-	pendingJobs  map[string]struct{}
+	store           store.Store
+	chrome          *chrome.Manager
+	chromeOnce      sync.Once
+	jobQueue        chan *store.Job
+	webhookChan     chan string // deliveryID
+	workerCount     int
+	googleAPIKey    string
+	defaultTimeoutS int
+	wg              sync.WaitGroup
+	ctx             context.Context
+	cancel          context.CancelFunc
+	mu              sync.Mutex
+	pendingJobs     map[string]struct{}
 }
 
-// NewManager creates a new job manager.
+// NewManager creates a new job manager. Chrome is started lazily on the first
+// browser/vitals job, so a network- or lighthouse-only deployment never spawns
+// a browser (and the manager is constructible in tests without Chrome).
 func NewManager(s store.Store, workerCount int, queueDepth int, googleAPIKey string) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Manager{
-		store:        s,
-		chrome:       chrome.NewManager(),
-		jobQueue:     make(chan *store.Job, queueDepth),
-		webhookChan:  make(chan string, 100),
-		workerCount:  workerCount,
-		googleAPIKey: googleAPIKey,
-		ctx:          ctx,
-		cancel:       cancel,
-		pendingJobs:  make(map[string]struct{}),
+		store:           s,
+		jobQueue:        make(chan *store.Job, queueDepth),
+		webhookChan:     make(chan string, webhookChanBuffer),
+		workerCount:     workerCount,
+		googleAPIKey:    googleAPIKey,
+		defaultTimeoutS: defaultTimeoutS,
+		ctx:             ctx,
+		cancel:          cancel,
+		pendingJobs:     make(map[string]struct{}),
+	}
+}
+
+// browserManager lazily starts the shared headless Chrome on first use.
+func (m *Manager) browserManager() *chrome.Manager {
+	m.chromeOnce.Do(func() { m.chrome = chrome.NewManager() })
+	return m.chrome
+}
+
+// SetDefaultTimeout overrides the default per-job timeout (seconds) applied when
+// a submission does not specify one. Values <= 0 are ignored.
+func (m *Manager) SetDefaultTimeout(seconds int) {
+	if seconds > 0 {
+		m.defaultTimeoutS = seconds
 	}
 }
 
@@ -77,18 +98,32 @@ func (m *Manager) Start() {
 func (m *Manager) Stop() {
 	m.cancel()
 	m.wg.Wait()
-	m.chrome.Close()
+	if m.chrome != nil { // may be nil if no browser/vitals job ever ran
+		m.chrome.Close()
+	}
 }
 
-// Submit enqueues a new job for execution.
+// Submit enqueues a new job for execution using the manager's default timeout.
 func (m *Manager) Submit(ctx context.Context, url string, tiers []string, runs int, webhookURL string) (*store.Job, error) {
+	return m.SubmitWithTimeout(ctx, url, tiers, runs, webhookURL, 0)
+}
+
+// SubmitWithTimeout enqueues a new job with a specific per-run timeout (seconds).
+// A timeoutS <= 0 falls back to the manager default.
+func (m *Manager) SubmitWithTimeout(ctx context.Context, url string, tiers []string, runs int, webhookURL string, timeoutS int) (*store.Job, error) {
+	if timeoutS <= 0 {
+		timeoutS = m.defaultTimeoutS
+	}
+	if timeoutS <= 0 {
+		timeoutS = defaultTimeoutS
+	}
 	job := &store.Job{
 		ID:         "jb_" + uuid.New().String()[:8],
 		URL:        url,
 		Status:     store.StatusPending,
 		Tiers:      tiers,
 		Runs:       runs,
-		TimeoutS:   60, // Default
+		TimeoutS:   timeoutS,
 		WebhookURL: webhookURL,
 		CreatedAt:  time.Now(),
 	}
@@ -97,25 +132,31 @@ func (m *Manager) Submit(ctx context.Context, url string, tiers []string, runs i
 		return nil, fmt.Errorf("failed to create job in store: %w", err)
 	}
 
+	// enqueueFailed cleans up the just-created state so a rejected submission
+	// leaves no orphaned PENDING row that no worker will ever process.
+	enqueueFailed := func(reason string) (*store.Job, error) {
+		m.mu.Lock()
+		delete(m.pendingJobs, job.ID)
+		m.mu.Unlock()
+		if derr := m.store.DeleteJob(ctx, job.ID); derr != nil {
+			slog.Error("Failed to clean up rejected job", "job_id", job.ID, "error", derr)
+		}
+		return nil, fmt.Errorf("%s", reason)
+	}
+
 	m.mu.Lock()
 	m.pendingJobs[job.ID] = struct{}{}
 	m.mu.Unlock()
 
 	if m.ctx.Err() != nil {
-		m.mu.Lock()
-		delete(m.pendingJobs, job.ID)
-		m.mu.Unlock()
-		return nil, fmt.Errorf("manager is shutting down")
+		return enqueueFailed("manager is shutting down")
 	}
 
 	select {
 	case m.jobQueue <- job:
 		return job, nil
 	default:
-		m.mu.Lock()
-		delete(m.pendingJobs, job.ID)
-		m.mu.Unlock()
-		return nil, fmt.Errorf("job queue is full")
+		return enqueueFailed("job queue is full")
 	}
 }
 
@@ -196,10 +237,17 @@ func (m *Manager) processJob(job *store.Job) {
 
 	timeout := time.Duration(job.TimeoutS) * time.Second
 	if timeout <= 0 {
-		timeout = 60 * time.Second
+		timeout = defaultTimeoutS * time.Second
 	}
 
-	successCount := 0
+	// A run is "clean" when every attempted tier succeeded, "total-fail" when
+	// every attempted tier failed, and "partial" otherwise. Tracking per-tier
+	// outcomes (rather than failing the whole run on the first tier error) means
+	// a job with, say, a failing Lighthouse tier but a successful network tier
+	// is reported as PARTIAL with its usable results preserved — not FAILED.
+	cleanRuns := 0
+	failedRuns := 0
+	failedTiers := map[string]bool{}
 	var lastErr error
 	for i := 1; i <= job.Runs; i++ {
 		resultRecord := &store.Result{
@@ -212,53 +260,69 @@ func (m *Manager) processJob(job *store.Job) {
 		// Bound each run so a hung target cannot occupy a worker forever.
 		runCtx, runCancel := context.WithTimeout(m.ctx, timeout)
 
-		runFailed := false
+		tiersRun := 0
+		tiersFailed := 0
+		fail := func(tier string, err error) {
+			tiersFailed++
+			failedTiers[tier] = true
+			lastErr = err
+		}
 
 		// 1. Network Tier
 		if hasTier("network") {
+			tiersRun++
 			netRes, err := network.Collect(runCtx, job.URL)
-			if err != nil {
-				lastErr = err
-				runFailed = true
-			} else {
+			// Keep the measured timing even when the target returned an HTTP
+			// error status (Collect returns a populated result alongside the
+			// error for status >= 400) — the metrics are still useful.
+			if netRes != nil {
 				resultRecord.Network = netRes
+			}
+			if err != nil {
+				fail("network", err)
 			}
 		}
 
 		// 2. Browser Tier
 		if hasTier("browser") {
+			tiersRun++
 			// Create a browser context for this run
-			bCtx, bCancel := m.chrome.NewContext(runCtx)
-			browserRes, err := browser.Collect(bCtx, job.URL)
-			bCancel()
-			if err != nil {
-				lastErr = err
-				runFailed = true
+			if bCtx, bCancel, err := m.browserManager().NewContext(runCtx); err != nil {
+				fail("browser", err)
 			} else {
-				resultRecord.Browser = browserRes
+				browserRes, err := browser.Collect(bCtx, job.URL)
+				bCancel()
+				if err != nil {
+					fail("browser", err)
+				} else {
+					resultRecord.Browser = browserRes
+				}
 			}
 		}
 
 		// 3. Vitals Tier
 		if hasTier("vitals") {
+			tiersRun++
 			// Create a browser context for this run
-			vCtx, vCancel := m.chrome.NewContext(runCtx)
-			vitalsRes, err := vitals.Collect(vCtx, job.URL)
-			vCancel()
-			if err != nil {
-				lastErr = err
-				runFailed = true
+			if vCtx, vCancel, err := m.browserManager().NewContext(runCtx); err != nil {
+				fail("vitals", err)
 			} else {
-				resultRecord.Vitals = vitalsRes
+				vitalsRes, err := vitals.Collect(vCtx, job.URL)
+				vCancel()
+				if err != nil {
+					fail("vitals", err)
+				} else {
+					resultRecord.Vitals = vitalsRes
+				}
 			}
 		}
 
 		// 4. Lighthouse Tier
 		if hasTier("lighthouse") {
+			tiersRun++
 			lhRes, err := lighthouse.Collect(runCtx, job.URL, m.googleAPIKey)
 			if err != nil {
-				lastErr = err
-				runFailed = true
+				fail("lighthouse", err)
 			} else {
 				resultRecord.Lighthouse = lhRes
 			}
@@ -266,8 +330,11 @@ func (m *Manager) processJob(job *store.Job) {
 
 		runCancel()
 
-		if !runFailed {
-			successCount++
+		switch {
+		case tiersRun == 0 || tiersFailed == 0:
+			cleanRuns++
+		case tiersFailed == tiersRun:
+			failedRuns++
 		}
 
 		if err := m.store.SaveResult(m.ctx, resultRecord); err != nil {
@@ -275,20 +342,7 @@ func (m *Manager) processJob(job *store.Job) {
 		}
 	}
 
-	status := store.StatusCompleted
-	var errStr *string
-
-	if successCount == 0 && job.Runs > 0 {
-		status = store.StatusFailed
-		if lastErr != nil {
-			s := lastErr.Error()
-			errStr = &s
-		}
-	} else if successCount < job.Runs {
-		status = store.StatusPartial
-		s := fmt.Sprintf("only %d/%d runs succeeded; last error: %v", successCount, job.Runs, lastErr)
-		errStr = &s
-	}
+	status, errStr := deriveStatus(job.Runs, cleanRuns, failedRuns, failedTiers, lastErr)
 
 	if err := m.store.UpdateJobStatus(m.ctx, job.ID, status, errStr); err != nil {
 		slog.Error("Failed to update job status", "job_id", job.ID, "status", status, "error", err)
@@ -297,6 +351,36 @@ func (m *Manager) processJob(job *store.Job) {
 	if job.WebhookURL != "" {
 		m.sendWebhook(job.ID)
 	}
+}
+
+// deriveStatus maps per-run tier outcomes to a final job status: COMPLETED when
+// every run was clean, FAILED when every run had all its tiers fail, and PARTIAL
+// otherwise (some tiers/runs succeeded and some failed).
+func deriveStatus(totalRuns, cleanRuns, failedRuns int, failedTiers map[string]bool, lastErr error) (store.JobStatus, *string) {
+	switch {
+	case totalRuns > 0 && failedRuns == totalRuns:
+		if lastErr != nil {
+			s := lastErr.Error()
+			return store.StatusFailed, &s
+		}
+		return store.StatusFailed, nil
+	case cleanRuns < totalRuns:
+		s := fmt.Sprintf("partial: %d/%d runs completed cleanly; failing tiers: %v; last error: %v",
+			cleanRuns, totalRuns, sortedKeys(failedTiers), lastErr)
+		return store.StatusPartial, &s
+	default:
+		return store.StatusCompleted, nil
+	}
+}
+
+// sortedKeys returns the map keys in deterministic order (for stable messages).
+func sortedKeys(m map[string]bool) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func (m *Manager) sendWebhook(jobID string) {

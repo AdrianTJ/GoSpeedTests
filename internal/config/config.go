@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"strconv"
@@ -78,7 +79,27 @@ func Load(filePath string) (*Config, error) {
 		cfg.AllowInsecure = true
 	}
 
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
 	return cfg, nil
+}
+
+// Validate rejects out-of-range numeric configuration. Without this a negative
+// queue depth panics make(chan) at startup and zero/negative workers silently
+// leave submitted jobs stuck in the queue forever.
+func (c *Config) Validate() error {
+	if c.Workers < 1 {
+		return fmt.Errorf("workers must be >= 1 (got %d)", c.Workers)
+	}
+	if c.QueueDepth < 1 {
+		return fmt.Errorf("queue_depth must be >= 1 (got %d)", c.QueueDepth)
+	}
+	if c.TimeoutS < 1 {
+		return fmt.Errorf("timeout_s must be >= 1 (got %d)", c.TimeoutS)
+	}
+	return nil
 }
 
 // SetupLogger initializes the global slog logger based on the configuration.
