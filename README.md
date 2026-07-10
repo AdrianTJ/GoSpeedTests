@@ -54,8 +54,16 @@ export GOST_API_KEY="your-secret-key"
 
 **2. Submit a test job:**
 ```bash
-curl -H "X-API-Key: your-secret-key" -X POST http://localhost:8080/v1/jobs -d '{"url": "https://web.dev"}'
+curl -H "X-API-Key: your-secret-key" -X POST http://localhost:8080/v1/jobs \
+  -d '{"url": "https://web.dev", "tiers": ["network"], "runs": 1, "timeout_s": 30}'
 ```
+
+Request fields: `url` (required), `tiers` (any of `network`, `browser`, `vitals`,
+`lighthouse`, `all`; unknown names are rejected), `runs` (1–10), `timeout_s`
+(per-run seconds, 0–600; 0 uses the server default), and `webhook_url` (POSTed
+the final result on completion). The daemon shuts down gracefully on
+`SIGINT`/`SIGTERM` (draining in-flight jobs) and, on startup, fails any jobs left
+`RUNNING`/`PENDING` by a previous process so they don't hang forever.
 
 ---
 
@@ -79,9 +87,15 @@ GoSpeedTest follows a strict configuration hierarchy: **Flags > Environment Vari
 | `GOST_LISTEN_ADDR` | `:8080` | API server address |
 | `DATABASE_URL` | `gospeedtest.db` | SQLite database path |
 | `GOST_API_KEY` | *(unset)* | API key for authentication |
-| `GOST_WORKERS` | `4` | Number of concurrent workers |
+| `GOST_WORKERS` | `4` | Number of concurrent workers (must be ≥ 1) |
+| `GOST_QUEUE_DEPTH` | `256` | Job queue buffer size (must be ≥ 1) |
+| `GOST_TIMEOUT_S` | `60` | Default per-run timeout in seconds; a request's `timeout_s` overrides it |
 | `GOST_ALLOW_PRIVATE_IPS` | `false` | Allow tests/webhooks to target private/loopback IPs (local testing only) |
 | `GOST_CHROME_NO_SANDBOX` | `false` | Disable the Chrome sandbox (only in trusted, isolated environments that can't support it) |
+
+The daemon validates its numeric configuration on startup and refuses to start
+with a clear error on invalid values (e.g. `GOST_WORKERS=0`, negative queue
+depth) rather than hanging or panicking.
 
 ---
 

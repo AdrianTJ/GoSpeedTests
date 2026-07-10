@@ -131,3 +131,79 @@ func TestRecoverInterruptedJobs(t *testing.T) {
 		t.Errorf("terminal job should be untouched, got %s", done.Status)
 	}
 }
+
+func TestGetJob_NotFound(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "getjob-nf")
+	defer os.RemoveAll(tmpDir)
+	s, _ := NewStore(filepath.Join(tmpDir, "test.db"))
+	defer s.Close()
+	j, err := s.GetJob(context.Background(), "does-not-exist")
+	if err != nil {
+		t.Fatalf("expected nil error for missing job, got %v", err)
+	}
+	if j != nil {
+		t.Errorf("expected nil job for missing id, got %+v", j)
+	}
+}
+
+func TestListJobs_OrderAndLimit(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "listjobs")
+	defer os.RemoveAll(tmpDir)
+	s, _ := NewStore(filepath.Join(tmpDir, "test.db"))
+	defer s.Close()
+	ctx := context.Background()
+
+	base := time.Now()
+	for i := 0; i < 5; i++ {
+		s.CreateJob(ctx, &Job{
+			ID: "jb_" + string(rune('a'+i)), URL: "http://x", Status: StatusPending,
+			Tiers: []string{"network"}, CreatedAt: base.Add(time.Duration(i) * time.Second),
+		})
+	}
+	jobs, err := s.ListJobs(ctx, 3)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(jobs) != 3 {
+		t.Fatalf("expected limit 3, got %d", len(jobs))
+	}
+	// Newest first: the last created (jb_e) must lead.
+	if jobs[0].ID != "jb_e" {
+		t.Errorf("expected newest job first (jb_e), got %s", jobs[0].ID)
+	}
+}
+
+func TestGetHistory_EmptyAndPopulated(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "history")
+	defer os.RemoveAll(tmpDir)
+	s, _ := NewStore(filepath.Join(tmpDir, "test.db"))
+	defer s.Close()
+	ctx := context.Background()
+
+	h, err := s.GetHistory(ctx, "http://none.example")
+	if err != nil {
+		t.Fatalf("history(empty): %v", err)
+	}
+	if h.TestCount != 0 {
+		t.Errorf("expected 0 tests for unknown url, got %d", h.TestCount)
+	}
+
+	url := "http://hist.example"
+	s.CreateJob(ctx, &Job{ID: "jb_h", URL: url, Status: StatusCompleted, Tiers: []string{"network"}, CreatedAt: time.Now()})
+	for i := 0; i < 2; i++ {
+		s.SaveResult(ctx, &Result{
+			ID: "res_" + string(rune('a'+i)), JobID: "jb_h", RunIndex: i,
+			Network: &network.Result{TTFBMS: 10, TotalMS: 20}, CollectedAt: time.Now(),
+		})
+	}
+	h, err = s.GetHistory(ctx, url)
+	if err != nil {
+		t.Fatalf("history(populated): %v", err)
+	}
+	if h.TestCount != 2 {
+		t.Errorf("expected 2 tests, got %d", h.TestCount)
+	}
+	if h.AvgTTFBMS != 10 || h.AvgTotalMS != 20 {
+		t.Errorf("unexpected averages: ttfb=%v total=%v", h.AvgTTFBMS, h.AvgTotalMS)
+	}
+}

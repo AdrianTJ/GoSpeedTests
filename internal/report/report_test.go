@@ -1,0 +1,71 @@
+package report
+
+import (
+	"bytes"
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/AdrianTJ/gospeedtest/internal/collector/browser"
+	"github.com/AdrianTJ/gospeedtest/internal/collector/lighthouse"
+	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
+	"github.com/AdrianTJ/gospeedtest/internal/collector/vitals"
+)
+
+func fullSummary() Summary {
+	return Summary{
+		URL:        "http://example.com",
+		Network:    &network.Result{DNSLookupMS: 1, TTFBMS: 2, TotalMS: 3, StatusCode: 200, ResponseBytes: 100},
+		Browser:    &browser.Result{DOMContentLoadedMS: 4, PageLoadMS: 5, ResourceCount: 2},
+		Vitals:     &vitals.Result{LCP: 6, FCP: 7},
+		Lighthouse: &lighthouse.Result{Performance: 0.9, SEO: 0.8},
+	}
+}
+
+func TestWriteJSON_AllTiers(t *testing.T) {
+	var b bytes.Buffer
+	if err := WriteJSON(&b, []Summary{fullSummary()}); err != nil {
+		t.Fatalf("WriteJSON: %v", err)
+	}
+	out := b.String()
+	for _, want := range []string{`"url"`, `"ttfb_ms"`, `"status_code": 200`, `"page_load_ms"`, `"lcp_ms"`, `"performance"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("JSON missing %q\n%s", want, out)
+		}
+	}
+}
+
+func TestWriteText_NilTiersOmitted(t *testing.T) {
+	var b bytes.Buffer
+	// Only the network tier is present; the others must not appear.
+	WriteText(&b, []Summary{{URL: "http://x", Network: &network.Result{StatusCode: 200}}})
+	out := b.String()
+	if !strings.Contains(out, "network") {
+		t.Errorf("expected network rows, got:\n%s", out)
+	}
+	for _, absent := range []string{"browser", "vitals", "lighthouse"} {
+		if strings.Contains(out, absent) {
+			t.Errorf("expected no %q rows for a network-only summary, got:\n%s", absent, out)
+		}
+	}
+}
+
+func TestWriteCSV_HeaderOnlyWhenEmpty(t *testing.T) {
+	var b bytes.Buffer
+	if err := WriteCSV(&b, nil); err != nil {
+		t.Fatalf("WriteCSV: %v", err)
+	}
+	if got := strings.TrimSpace(b.String()); got != "url,tier,metric,value" {
+		t.Errorf("expected header-only output, got %q", got)
+	}
+}
+
+type errWriter struct{}
+
+func (errWriter) Write([]byte) (int, error) { return 0, errors.New("write failed") }
+
+func TestWriteCSV_PropagatesWriterError(t *testing.T) {
+	if err := WriteCSV(errWriter{}, []Summary{fullSummary()}); err == nil {
+		t.Error("expected WriteCSV to surface the writer error")
+	}
+}

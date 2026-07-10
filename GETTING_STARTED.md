@@ -90,8 +90,13 @@ You can use `curl` to submit a job:
 ```bash
 curl -X POST http://localhost:8080/v1/jobs \
      -H "Content-Type: application/json" \
-     -d '{"url": "https://example.com", "tiers": ["network", "vitals"]}'
+     -d '{"url": "https://example.com", "tiers": ["network", "vitals"], "runs": 1, "timeout_s": 30}'
 ```
+
+- `tiers`: any of `network`, `browser`, `vitals`, `lighthouse`, or `all` (unknown names are rejected with `400`).
+- `runs`: how many times to repeat the measurement (1–10).
+- `timeout_s`: per-run timeout in seconds (0–600); omit or use `0` for the server default.
+- `webhook_url` (optional): the daemon POSTs the final result there on completion.
 
 ---
 

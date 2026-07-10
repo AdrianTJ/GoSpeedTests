@@ -26,12 +26,15 @@ const (
 	maxWebhookRetries = 5
 	webhookBatchSize  = 10
 	webhookTickRate   = 5 * time.Second
+	webhookChanBuffer = 100 // in-memory notify buffer for immediate delivery
+	defaultTimeoutS   = 60  // fallback per-job timeout in seconds
 )
 
 // Manager handles job orchestration and the worker pool.
 type Manager struct {
 	store           store.Store
 	chrome          *chrome.Manager
+	chromeOnce      sync.Once
 	jobQueue        chan *store.Job
 	webhookChan     chan string // deliveryID
 	workerCount     int
@@ -44,21 +47,28 @@ type Manager struct {
 	pendingJobs     map[string]struct{}
 }
 
-// NewManager creates a new job manager.
+// NewManager creates a new job manager. Chrome is started lazily on the first
+// browser/vitals job, so a network- or lighthouse-only deployment never spawns
+// a browser (and the manager is constructible in tests without Chrome).
 func NewManager(s store.Store, workerCount int, queueDepth int, googleAPIKey string) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Manager{
 		store:           s,
-		chrome:          chrome.NewManager(),
 		jobQueue:        make(chan *store.Job, queueDepth),
-		webhookChan:     make(chan string, 100),
+		webhookChan:     make(chan string, webhookChanBuffer),
 		workerCount:     workerCount,
 		googleAPIKey:    googleAPIKey,
-		defaultTimeoutS: 60,
+		defaultTimeoutS: defaultTimeoutS,
 		ctx:             ctx,
 		cancel:          cancel,
 		pendingJobs:     make(map[string]struct{}),
 	}
+}
+
+// browserManager lazily starts the shared headless Chrome on first use.
+func (m *Manager) browserManager() *chrome.Manager {
+	m.chromeOnce.Do(func() { m.chrome = chrome.NewManager() })
+	return m.chrome
 }
 
 // SetDefaultTimeout overrides the default per-job timeout (seconds) applied when
@@ -88,7 +98,9 @@ func (m *Manager) Start() {
 func (m *Manager) Stop() {
 	m.cancel()
 	m.wg.Wait()
-	m.chrome.Close()
+	if m.chrome != nil { // may be nil if no browser/vitals job ever ran
+		m.chrome.Close()
+	}
 }
 
 // Submit enqueues a new job for execution using the manager's default timeout.
@@ -103,7 +115,7 @@ func (m *Manager) SubmitWithTimeout(ctx context.Context, url string, tiers []str
 		timeoutS = m.defaultTimeoutS
 	}
 	if timeoutS <= 0 {
-		timeoutS = 60
+		timeoutS = defaultTimeoutS
 	}
 	job := &store.Job{
 		ID:         "jb_" + uuid.New().String()[:8],
@@ -225,7 +237,7 @@ func (m *Manager) processJob(job *store.Job) {
 
 	timeout := time.Duration(job.TimeoutS) * time.Second
 	if timeout <= 0 {
-		timeout = 60 * time.Second
+		timeout = defaultTimeoutS * time.Second
 	}
 
 	// A run is "clean" when every attempted tier succeeded, "total-fail" when
@@ -275,7 +287,7 @@ func (m *Manager) processJob(job *store.Job) {
 		if hasTier("browser") {
 			tiersRun++
 			// Create a browser context for this run
-			bCtx, bCancel := m.chrome.NewContext(runCtx)
+			bCtx, bCancel := m.browserManager().NewContext(runCtx)
 			browserRes, err := browser.Collect(bCtx, job.URL)
 			bCancel()
 			if err != nil {
@@ -289,7 +301,7 @@ func (m *Manager) processJob(job *store.Job) {
 		if hasTier("vitals") {
 			tiersRun++
 			// Create a browser context for this run
-			vCtx, vCancel := m.chrome.NewContext(runCtx)
+			vCtx, vCancel := m.browserManager().NewContext(runCtx)
 			vitalsRes, err := vitals.Collect(vCtx, job.URL)
 			vCancel()
 			if err != nil {
@@ -324,24 +336,7 @@ func (m *Manager) processJob(job *store.Job) {
 		}
 	}
 
-	status := store.StatusCompleted
-	var errStr *string
-
-	switch {
-	case job.Runs > 0 && failedRuns == job.Runs:
-		// Every run had all of its tiers fail.
-		status = store.StatusFailed
-		if lastErr != nil {
-			s := lastErr.Error()
-			errStr = &s
-		}
-	case cleanRuns < job.Runs:
-		// Some tiers (or some runs) failed, but not everything.
-		status = store.StatusPartial
-		s := fmt.Sprintf("partial: %d/%d runs completed cleanly; failing tiers: %v; last error: %v",
-			cleanRuns, job.Runs, sortedKeys(failedTiers), lastErr)
-		errStr = &s
-	}
+	status, errStr := deriveStatus(job.Runs, cleanRuns, failedRuns, failedTiers, lastErr)
 
 	if err := m.store.UpdateJobStatus(m.ctx, job.ID, status, errStr); err != nil {
 		slog.Error("Failed to update job status", "job_id", job.ID, "status", status, "error", err)
@@ -349,6 +344,26 @@ func (m *Manager) processJob(job *store.Job) {
 
 	if job.WebhookURL != "" {
 		m.sendWebhook(job.ID)
+	}
+}
+
+// deriveStatus maps per-run tier outcomes to a final job status: COMPLETED when
+// every run was clean, FAILED when every run had all its tiers fail, and PARTIAL
+// otherwise (some tiers/runs succeeded and some failed).
+func deriveStatus(totalRuns, cleanRuns, failedRuns int, failedTiers map[string]bool, lastErr error) (store.JobStatus, *string) {
+	switch {
+	case totalRuns > 0 && failedRuns == totalRuns:
+		if lastErr != nil {
+			s := lastErr.Error()
+			return store.StatusFailed, &s
+		}
+		return store.StatusFailed, nil
+	case cleanRuns < totalRuns:
+		s := fmt.Sprintf("partial: %d/%d runs completed cleanly; failing tiers: %v; last error: %v",
+			cleanRuns, totalRuns, sortedKeys(failedTiers), lastErr)
+		return store.StatusPartial, &s
+	default:
+		return store.StatusCompleted, nil
 	}
 }
 

@@ -6,27 +6,27 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/AdrianTJ/gospeedtest/internal/job"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
+	"github.com/AdrianTJ/gospeedtest/internal/tier"
 	"github.com/AdrianTJ/gospeedtest/internal/validator"
 )
 
 const (
-	maxRequestBody = 1 << 20 // 1 MiB cap on request bodies
-	maxTimeoutS    = 600     // upper bound on a caller-supplied per-job timeout
+	maxRequestBody      = 1 << 20 // 1 MiB cap on request bodies
+	maxTimeoutS         = 600     // upper bound on a caller-supplied per-job timeout
+	maxRuns             = 10      // upper bound on the runs parameter
+	defaultJobListLimit = 50      // number of jobs GET /v1/jobs returns
 )
-
-var allowedTiers = map[string]bool{
-	"network": true, "browser": true, "vitals": true, "lighthouse": true, "all": true,
-}
 
 // validateTiers rejects unknown tier names so a typo does not silently produce
 // a COMPLETED job with no results. An empty list is allowed (defaults to network).
 func validateTiers(tiers []string) error {
 	for _, t := range tiers {
-		if !allowedTiers[t] {
-			return fmt.Errorf("invalid tier %q (allowed: network, browser, vitals, lighthouse, all)", t)
+		if !tier.Valid(t) {
+			return fmt.Errorf("invalid tier %q (allowed: %s)", t, strings.Join(tier.Supported, ", "))
 		}
 	}
 	return nil
@@ -174,8 +174,8 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		req.Runs = 1
 	}
 
-	if req.Runs > 10 {
-		http.Error(w, "runs parameter cannot exceed 10", http.StatusBadRequest)
+	if req.Runs > maxRuns {
+		http.Error(w, fmt.Sprintf("runs parameter cannot exceed %d", maxRuns), http.StatusBadRequest)
 		return
 	}
 
@@ -234,7 +234,7 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
-	jobs, err := s.store.ListJobs(r.Context(), 50)
+	jobs, err := s.store.ListJobs(r.Context(), defaultJobListLimit)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

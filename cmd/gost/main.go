@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/AdrianTJ/gospeedtest/internal/chrome"
@@ -16,6 +17,7 @@ import (
 	"github.com/AdrianTJ/gospeedtest/internal/config"
 	"github.com/AdrianTJ/gospeedtest/internal/report"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
+	"github.com/AdrianTJ/gospeedtest/internal/tier"
 	"github.com/AdrianTJ/gospeedtest/internal/validator"
 	"github.com/google/uuid"
 )
@@ -38,10 +40,8 @@ func main() {
 
 	config.SetupLogger("info")
 
-	switch *tierPtr {
-	case "network", "browser", "vitals", "lighthouse", "all":
-	default:
-		fmt.Fprintf(os.Stderr, "Error: invalid tier %q (allowed: network, browser, vitals, lighthouse, all)\n", *tierPtr)
+	if !tier.Valid(*tierPtr) {
+		fmt.Fprintf(os.Stderr, "Error: invalid tier %q (allowed: %s)\n", *tierPtr, strings.Join(tier.Supported, ", "))
 		os.Exit(2)
 	}
 

@@ -63,6 +63,11 @@ components:
           type: integer
           default: 1
           maximum: 10
+        timeout_s:
+          type: integer
+          description: Per-run timeout in seconds. 0 uses the server default (GOST_TIMEOUT_S).
+          minimum: 0
+          maximum: 600
         webhook_url:
           type: string
 

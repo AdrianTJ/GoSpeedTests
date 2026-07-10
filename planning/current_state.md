@@ -67,6 +67,15 @@ Adversarial/failure-path audit (report in `planning/dogfood_report_2026-07_round
 - Positive: no leaks/races/panics under browser soak + concurrent mutation; redirect cap & loop protection, timeout enforcement, and SSRF/auth all held.
 - Deferred (low severity, documented): list pagination, response-body size cap, credential-in-URL redaction, history URL normalization, CLI `-db` status accuracy.
 
+### Code-Quality Pass (July 10, 2026)
+Refactors and test/documentation improvements from an engineering-quality review:
+- [x] **Config validation** (`config.Validate`): the daemon refuses to start on `workers<1`, `queue_depth<1`, or `timeout_s<1` (was: zero workers → silent hang; negative queue depth → `make(chan)` panic).
+- [x] **Single source of truth for tiers** (`internal/tier`): the allowed-tier list, previously duplicated across the API handler, CLI, and manager, now lives in one package.
+- [x] **Lazy Chrome**: the daemon starts headless Chrome on the first browser/vitals job instead of at construction, so a network/lighthouse-only deployment never spawns a browser (and `Manager` is now constructible in tests without Chrome).
+- [x] **DRY**: extracted `store.scanJob` (dedup of `GetJob`/`ListJobs`) and `job.deriveStatus`; named magic numbers (list limit, runs cap, webhook buffer, default timeout).
+- [x] **Tests**: `internal/report` 0%→79%, `internal/config` 47%→73%, new `internal/tier` at 100%; added `deriveStatus`, store read-path, and validation tests. Full suite + `-race` green.
+- [x] **Docs**: README/GETTING_STARTED document `timeout_s`, tier validation, graceful shutdown/recovery, and the new config knobs; `openapi.yaml` re-documents `timeout_s` (now functional).
+
 ### Pending
 - [ ] Distributed workers.
 - [ ] **Security defense-in-depth (deployment):** network isolation is still recommended — Chrome-tier DNS rebinding and the Chrome sandbox on hosts without user namespaces both benefit from it. See `security_review_report.md` §3 and §5.

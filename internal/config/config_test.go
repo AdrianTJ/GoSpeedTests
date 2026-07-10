@@ -57,3 +57,52 @@ workers: 8
 		t.Errorf("expected file value for workers to be preserved, got %d", cfg.Workers)
 	}
 }
+
+func TestConfig_Validate(t *testing.T) {
+	ok := &Config{Workers: 4, QueueDepth: 10, TimeoutS: 60}
+	if err := ok.Validate(); err != nil {
+		t.Errorf("valid config rejected: %v", err)
+	}
+	for name, c := range map[string]*Config{
+		"zero workers":     {Workers: 0, QueueDepth: 10, TimeoutS: 60},
+		"negative workers": {Workers: -1, QueueDepth: 10, TimeoutS: 60},
+		"negative queue":   {Workers: 1, QueueDepth: -1, TimeoutS: 60},
+		"zero timeout":     {Workers: 1, QueueDepth: 10, TimeoutS: 0},
+	} {
+		if err := c.Validate(); err == nil {
+			t.Errorf("%s: expected validation error, got nil", name)
+		}
+	}
+}
+
+func TestConfig_NegativeEnvRejectedByLoad(t *testing.T) {
+	t.Setenv("GOST_QUEUE_DEPTH", "-1")
+	if _, err := Load(""); err == nil {
+		t.Error("expected Load to reject negative queue_depth")
+	}
+}
+
+func TestConfig_NumericEnvOverride(t *testing.T) {
+	t.Setenv("GOST_WORKERS", "6")
+	t.Setenv("GOST_TIMEOUT_S", "45")
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.Workers != 6 || cfg.TimeoutS != 45 {
+		t.Errorf("env override not applied: workers=%d timeout=%d", cfg.Workers, cfg.TimeoutS)
+	}
+}
+
+func TestConfig_AllowInsecureExactMatch(t *testing.T) {
+	t.Setenv("GOST_ALLOW_INSECURE", "TRUE") // only lowercase "true" should enable
+	cfg, _ := Load("")
+	if cfg.AllowInsecure {
+		t.Error(`"TRUE" should not enable insecure mode (only exact "true")`)
+	}
+	t.Setenv("GOST_ALLOW_INSECURE", "true")
+	cfg, _ = Load("")
+	if !cfg.AllowInsecure {
+		t.Error(`"true" should enable insecure mode`)
+	}
+}
