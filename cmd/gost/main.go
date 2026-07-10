@@ -94,25 +94,33 @@ func main() {
 		}
 		if tier == "all" || tier == "browser" {
 			tiersAttempted++
-			bCtx, bCancel := chromeMgr.NewContext(ctx)
-			browserRes, err := browser.Collect(bCtx, *urlPtr)
-			bCancel()
-			if err != nil {
+			if bCtx, bCancel, err := chromeMgr.NewContext(ctx); err != nil {
 				tiersFailed++
 				slog.Error("Browser collection failed", "error", err)
+			} else {
+				browserRes, err := browser.Collect(bCtx, *urlPtr)
+				bCancel()
+				if err != nil {
+					tiersFailed++
+					slog.Error("Browser collection failed", "error", err)
+				}
+				res.Browser = browserRes
 			}
-			res.Browser = browserRes
 		}
 		if tier == "all" || tier == "vitals" {
 			tiersAttempted++
-			vCtx, vCancel := chromeMgr.NewContext(ctx)
-			vitalsRes, err := vitals.Collect(vCtx, *urlPtr)
-			vCancel()
-			if err != nil {
+			if vCtx, vCancel, err := chromeMgr.NewContext(ctx); err != nil {
 				tiersFailed++
 				slog.Error("Vitals collection failed", "error", err)
+			} else {
+				vitalsRes, err := vitals.Collect(vCtx, *urlPtr)
+				vCancel()
+				if err != nil {
+					tiersFailed++
+					slog.Error("Vitals collection failed", "error", err)
+				}
+				res.Vitals = vitalsRes
 			}
-			res.Vitals = vitalsRes
 		}
 		if tier == "all" || tier == "lighthouse" {
 			tiersAttempted++

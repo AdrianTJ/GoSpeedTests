@@ -287,13 +287,16 @@ func (m *Manager) processJob(job *store.Job) {
 		if hasTier("browser") {
 			tiersRun++
 			// Create a browser context for this run
-			bCtx, bCancel := m.browserManager().NewContext(runCtx)
-			browserRes, err := browser.Collect(bCtx, job.URL)
-			bCancel()
-			if err != nil {
+			if bCtx, bCancel, err := m.browserManager().NewContext(runCtx); err != nil {
 				fail("browser", err)
 			} else {
-				resultRecord.Browser = browserRes
+				browserRes, err := browser.Collect(bCtx, job.URL)
+				bCancel()
+				if err != nil {
+					fail("browser", err)
+				} else {
+					resultRecord.Browser = browserRes
+				}
 			}
 		}
 
@@ -301,13 +304,16 @@ func (m *Manager) processJob(job *store.Job) {
 		if hasTier("vitals") {
 			tiersRun++
 			// Create a browser context for this run
-			vCtx, vCancel := m.browserManager().NewContext(runCtx)
-			vitalsRes, err := vitals.Collect(vCtx, job.URL)
-			vCancel()
-			if err != nil {
+			if vCtx, vCancel, err := m.browserManager().NewContext(runCtx); err != nil {
 				fail("vitals", err)
 			} else {
-				resultRecord.Vitals = vitalsRes
+				vitalsRes, err := vitals.Collect(vCtx, job.URL)
+				vCancel()
+				if err != nil {
+					fail("vitals", err)
+				} else {
+					resultRecord.Vitals = vitalsRes
+				}
 			}
 		}
 

@@ -19,7 +19,10 @@ func TestVitalsCollector_Functional(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	bCtx, bCancel := cm.NewContext(ctx)
+	bCtx, bCancel, err := cm.NewContext(ctx)
+	if err != nil {
+		t.Fatalf("browser unavailable: %v", err)
+	}
 	defer bCancel()
 
 	// Navigate to a site known to have CWV metrics
