@@ -10,6 +10,7 @@ import (
 
 	"github.com/AdrianTJ/gospeedtest/internal/budget"
 	"github.com/AdrianTJ/gospeedtest/internal/job"
+	"github.com/AdrianTJ/gospeedtest/internal/profile"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
 	"github.com/AdrianTJ/gospeedtest/internal/tier"
 	"github.com/AdrianTJ/gospeedtest/internal/validator"
@@ -38,6 +39,8 @@ type Server struct {
 	store         store.Store
 	apiKey        string
 	allowInsecure bool
+	rumOrigins    []string // allowed Origins for POST /v1/rum; empty = endpoint disabled
+	rumLimiter    *tokenBucket
 }
 
 func NewServer(m *job.Manager, s store.Store, apiKey string, allowInsecure bool) *Server {
@@ -46,7 +49,15 @@ func NewServer(m *job.Manager, s store.Store, apiKey string, allowInsecure bool)
 		store:         s,
 		apiKey:        apiKey,
 		allowInsecure: allowInsecure,
+		rumLimiter:    newTokenBucket(rumEventsPerSecond, rumBurst),
 	}
+}
+
+// SetRUMOrigins enables the public RUM ingest endpoint for the given origins
+// (comma-separated list already split by the caller; "*" allows any origin).
+// With no origins configured the endpoint stays disabled (404).
+func (s *Server) SetRUMOrigins(origins []string) {
+	s.rumOrigins = origins
 }
 
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
@@ -95,6 +106,12 @@ func (s *Server) Routes() http.Handler {
 	// Prometheus metrics. Auth-protected: an open endpoint would leak the set
 	// of tested URLs. Prometheus scrape configs can send the X-API-Key header.
 	mux.Handle("GET /metrics", s.authMiddleware(http.HandlerFunc(s.handleMetrics)))
+
+	// RUM ingest: public by design (browsers beacon here), but disabled until
+	// GOST_RUM_ORIGINS is configured; the summary endpoint stays protected.
+	mux.HandleFunc("POST /v1/rum", s.handleRUMIngest)
+	mux.HandleFunc("OPTIONS /v1/rum", s.handleRUMPreflight)
+	mux.Handle("GET /v1/rum/summary", s.authMiddleware(http.HandlerFunc(s.handleRUMSummary)))
 
 	return mux
 }
@@ -159,6 +176,7 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		TimeoutS   int            `json:"timeout_s"`
 		WebhookURL string         `json:"webhook_url"`
 		Budget     *budget.Budget `json:"budget"`
+		Profile    string         `json:"profile"`
 	}
 
 	// Cap the request body so a large payload cannot exhaust memory.
@@ -211,6 +229,11 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if !profile.Valid(req.Profile) {
+		http.Error(w, profile.ErrUnknown(req.Profile).Error(), http.StatusBadRequest)
+		return
+	}
+
 	created, err := s.manager.SubmitJob(r.Context(), job.SubmitOptions{
 		URL:        req.URL,
 		Tiers:      req.Tiers,
@@ -218,6 +241,7 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		TimeoutS:   req.TimeoutS,
 		WebhookURL: req.WebhookURL,
 		Budget:     req.Budget,
+		Profile:    req.Profile,
 	})
 
 	if err != nil {

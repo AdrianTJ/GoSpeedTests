@@ -8,6 +8,7 @@ import (
 
 	"github.com/AdrianTJ/gospeedtest/internal/budget"
 	"github.com/AdrianTJ/gospeedtest/internal/job"
+	"github.com/AdrianTJ/gospeedtest/internal/profile"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
 	"github.com/AdrianTJ/gospeedtest/internal/validator"
 	"github.com/google/uuid"
@@ -21,6 +22,7 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 		IntervalSeconds int            `json:"interval_seconds"`
 		Budget          *budget.Budget `json:"budget"`
 		WebhookURL      string         `json:"webhook_url"`
+		Profile         string         `json:"profile"`
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
@@ -64,6 +66,10 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if !profile.Valid(req.Profile) {
+		http.Error(w, profile.ErrUnknown(req.Profile).Error(), http.StatusBadRequest)
+		return
+	}
 
 	now := time.Now()
 	sc := &store.Schedule{
@@ -74,6 +80,7 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 		IntervalSeconds: req.IntervalSeconds,
 		Budget:          req.Budget,
 		WebhookURL:      req.WebhookURL,
+		Profile:         req.Profile,
 		Enabled:         true,
 		CreatedAt:       now,
 		// First run fires on the next scheduler tick — monitoring users

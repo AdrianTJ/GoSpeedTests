@@ -16,6 +16,7 @@ import (
 	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/vitals"
 	"github.com/AdrianTJ/gospeedtest/internal/config"
+	"github.com/AdrianTJ/gospeedtest/internal/profile"
 	"github.com/AdrianTJ/gospeedtest/internal/report"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
 	"github.com/AdrianTJ/gospeedtest/internal/tier"
@@ -32,6 +33,7 @@ func main() {
 	timeoutPtr := flag.Int("timeout", 60, "Timeout in seconds per run")
 	gkeyPtr := flag.String("gkey", os.Getenv("GOST_GOOGLE_API_KEY"), "Google API Key for Lighthouse (optional)")
 	budgetPtr := flag.String("budget", "", "Path to a budget file (YAML or JSON); exit code 3 on violation")
+	profilePtr := flag.String("profile", "none", "Throttling profile for browser/vitals tiers: none, 4g, fast-3g, slow-3g")
 	flag.Parse()
 
 	if *urlPtr == "" {
@@ -44,6 +46,12 @@ func main() {
 
 	if !tier.Valid(*tierPtr) {
 		fmt.Fprintf(os.Stderr, "Error: invalid tier %q (allowed: %s)\n", *tierPtr, strings.Join(tier.Supported, ", "))
+		os.Exit(2)
+	}
+
+	prof, profOK := profile.Get(*profilePtr)
+	if !profOK {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", profile.ErrUnknown(*profilePtr))
 		os.Exit(2)
 	}
 
@@ -113,7 +121,7 @@ func main() {
 				tiersFailed++
 				slog.Error("Browser collection failed", "error", err)
 			} else {
-				browserRes, err := browser.Collect(bCtx, *urlPtr)
+				browserRes, err := collectThrottled(bCtx, *urlPtr, prof, browser.Collect)
 				bCancel()
 				if err != nil {
 					tiersFailed++
@@ -128,7 +136,7 @@ func main() {
 				tiersFailed++
 				slog.Error("Vitals collection failed", "error", err)
 			} else {
-				vitalsRes, err := vitals.Collect(vCtx, *urlPtr)
+				vitalsRes, err := collectThrottled(vCtx, *urlPtr, prof, vitals.Collect)
 				vCancel()
 				if err != nil {
 					tiersFailed++
@@ -149,18 +157,24 @@ func main() {
 		cancel()
 		summaries = append(summaries, res)
 
-		// Persist if store is available
+		// Persist if store is available. Persistence failures must not abort
+		// the measurement run, but silence would let a bad -db path masquerade
+		// as saved data — warn on every failure.
 		if s != nil {
 			jobID := "cli_" + uuid.New().String()[:8]
-			s.CreateJob(context.Background(), &store.Job{
+			if err := s.CreateJob(context.Background(), &store.Job{
 				ID: jobID, URL: *urlPtr, Status: store.StatusCompleted,
-				Tiers: []string{tier}, Runs: 1, Budget: budg, CreatedAt: time.Now(),
-			})
-			s.SaveResult(context.Background(), &store.Result{
+				Tiers: []string{tier}, Runs: 1, Budget: budg, Profile: prof.Name, CreatedAt: time.Now(),
+			}); err != nil {
+				slog.Warn("Failed to persist job", "job_id", jobID, "error", err)
+			}
+			if err := s.SaveResult(context.Background(), &store.Result{
 				ID: "res_" + uuid.New().String()[:8], JobID: jobID, RunIndex: i,
 				Network: res.Network, Browser: res.Browser, Vitals: res.Vitals,
 				Lighthouse: res.Lighthouse, CollectedAt: time.Now(),
-			})
+			}); err != nil {
+				slog.Warn("Failed to persist result", "job_id", jobID, "error", err)
+			}
 			cliJobIDs = append(cliJobIDs, jobID)
 		}
 	}
@@ -168,19 +182,24 @@ func main() {
 	eval := evaluateBudget(budg, summaries)
 	if s != nil && eval != nil {
 		for _, id := range cliJobIDs {
-			s.SetJobBudgetResult(context.Background(), id, eval)
+			if err := s.SetJobBudgetResult(context.Background(), id, eval); err != nil {
+				slog.Warn("Failed to persist budget result", "job_id", id, "error", err)
+			}
 		}
 	}
 
+	// A report we couldn't write is a failed invocation (broken pipe, full
+	// disk) — the caller must not mistake missing output for success.
+	var writeErr error
 	switch *formatPtr {
 	case "json":
 		if eval != nil {
-			report.WriteJSON(os.Stdout, map[string]interface{}{"runs": summaries, "budget_result": eval})
+			writeErr = report.WriteJSON(os.Stdout, map[string]interface{}{"runs": summaries, "budget_result": eval})
 		} else {
-			report.WriteJSON(os.Stdout, summaries)
+			writeErr = report.WriteJSON(os.Stdout, summaries)
 		}
 	case "csv":
-		report.WriteCSV(os.Stdout, summaries)
+		writeErr = report.WriteCSV(os.Stdout, summaries)
 		if eval != nil {
 			report.WriteBudgetText(os.Stderr, eval)
 		}
@@ -189,6 +208,10 @@ func main() {
 		if eval != nil {
 			report.WriteBudgetText(os.Stdout, eval)
 		}
+	}
+	if writeErr != nil {
+		fmt.Fprintf(os.Stderr, "Error: writing report: %v\n", writeErr)
+		os.Exit(1)
 	}
 
 	// Signal failure to scripts only when every tier attempt failed; a partial
@@ -204,6 +227,15 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Error: budget violated")
 		os.Exit(3)
 	}
+}
+
+// collectThrottled applies the throttling profile to the tab (no-op for
+// "none") and then runs the collector on it.
+func collectThrottled[T any](ctx context.Context, url string, prof profile.Profile, collect func(context.Context, string) (*T, error)) (*T, error) {
+	if err := profile.Apply(ctx, prof); err != nil {
+		return nil, err
+	}
+	return collect(ctx, url)
 }
 
 // evaluateBudget judges the budget against the median of the collected runs.

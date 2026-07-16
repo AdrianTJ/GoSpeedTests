@@ -86,6 +86,8 @@ var metricKeys = map[string]bool{
 	"browser.resource_count":        true,
 	"vitals.lcp_ms":                 true,
 	"vitals.fcp_ms":                 true,
+	"vitals.cls":                    true,
+	"vitals.tbt_ms":                 true,
 	"lighthouse.performance":        true,
 	"lighthouse.accessibility":      true,
 	"lighthouse.best_practices":     true,
@@ -162,6 +164,8 @@ func Flatten(n *network.Result, br *browser.Result, v *vitals.Result, lh *lighth
 	if v != nil {
 		m["vitals.lcp_ms"] = v.LCP
 		m["vitals.fcp_ms"] = v.FCP
+		m["vitals.cls"] = v.CLS
+		m["vitals.tbt_ms"] = v.TBT
 	}
 	if lh != nil {
 		m["lighthouse.performance"] = lh.Performance

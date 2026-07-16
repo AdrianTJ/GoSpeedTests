@@ -19,6 +19,7 @@ import (
 	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/vitals"
 	"github.com/AdrianTJ/gospeedtest/internal/metrics"
+	"github.com/AdrianTJ/gospeedtest/internal/profile"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
 	"github.com/AdrianTJ/gospeedtest/internal/validator"
 	"github.com/google/uuid"
@@ -131,6 +132,7 @@ type SubmitOptions struct {
 	WebhookURL string
 	Budget     *budget.Budget
 	ScheduleID string
+	Profile    string // throttling profile name; "" or "none" = unthrottled
 }
 
 // Submit enqueues a new job for execution using the manager's default timeout.
@@ -163,6 +165,7 @@ func (m *Manager) SubmitJob(ctx context.Context, opts SubmitOptions) (*store.Job
 		WebhookURL: opts.WebhookURL,
 		Budget:     opts.Budget,
 		ScheduleID: opts.ScheduleID,
+		Profile:    opts.Profile,
 		CreatedAt:  time.Now(),
 	}
 
@@ -243,7 +246,11 @@ func (m *Manager) worker(id int) {
 					if r := recover(); r != nil {
 						slog.Error("Worker panicked while processing job", "worker_id", id, "job_id", job.ID, "recover", r)
 						errStr := fmt.Sprintf("internal worker panic: %v", r)
-						m.store.UpdateJobStatus(m.ctx, job.ID, store.StatusFailed, &errStr)
+						if err := m.store.UpdateJobStatus(m.ctx, job.ID, store.StatusFailed, &errStr); err != nil {
+							// Job may be left RUNNING in the store; recovery on
+							// next daemon start will fail it.
+							slog.Error("Failed to mark panicked job FAILED", "job_id", job.ID, "error", err)
+						}
 					}
 				}()
 				m.processJob(job)
@@ -324,6 +331,10 @@ func (m *Manager) processJob(job *store.Job) {
 			}
 		}
 
+		// The profile was validated at submission; an unknown name here (e.g.
+		// a row written by a newer version) falls back to unthrottled.
+		prof, _ := profile.Get(job.Profile)
+
 		// 2. Browser Tier
 		if hasTier("browser") {
 			tiersRun++
@@ -331,7 +342,7 @@ func (m *Manager) processJob(job *store.Job) {
 			if bCtx, bCancel, err := m.browserManager().NewContext(runCtx); err != nil {
 				fail("browser", err)
 			} else {
-				browserRes, err := browser.Collect(bCtx, job.URL)
+				browserRes, err := collectThrottled(bCtx, job.URL, prof, browser.Collect)
 				bCancel()
 				if err != nil {
 					fail("browser", err)
@@ -348,7 +359,7 @@ func (m *Manager) processJob(job *store.Job) {
 			if vCtx, vCancel, err := m.browserManager().NewContext(runCtx); err != nil {
 				fail("vitals", err)
 			} else {
-				vitalsRes, err := vitals.Collect(vCtx, job.URL)
+				vitalsRes, err := collectThrottled(vCtx, job.URL, prof, vitals.Collect)
 				vCancel()
 				if err != nil {
 					fail("vitals", err)
@@ -426,6 +437,15 @@ func (m *Manager) processJob(job *store.Job) {
 	if job.WebhookURL != "" {
 		m.sendWebhook(job.ID)
 	}
+}
+
+// collectThrottled applies the throttling profile to the tab (no-op for
+// "none") and then runs the collector on it.
+func collectThrottled[T any](ctx context.Context, url string, prof profile.Profile, collect func(context.Context, string) (*T, error)) (*T, error) {
+	if err := profile.Apply(ctx, prof); err != nil {
+		return nil, err
+	}
+	return collect(ctx, url)
 }
 
 // deriveStatus maps per-run tier outcomes to a final job status: COMPLETED when
@@ -570,7 +590,7 @@ func (m *Manager) sendOneWebhook(client *http.Client, d store.WebhookDelivery) {
 	if success {
 		slog.Info("Webhook delivered", "job_id", d.JobID, "delivery_id", d.ID, "attempts", d.Attempts)
 		m.metrics.CounterInc("gost_webhook_deliveries_total", "result", "success")
-		m.store.UpdateWebhookStatus(m.ctx, d.ID, "SUCCESS", d.Attempts, d.LastAttempt, nil)
+		m.setWebhookStatus(d, "SUCCESS", nil)
 		return
 	}
 
@@ -578,7 +598,7 @@ func (m *Manager) sendOneWebhook(client *http.Client, d store.WebhookDelivery) {
 	if d.Attempts >= maxWebhookRetries {
 		slog.Error("Webhook failed permanently", "job_id", d.JobID, "delivery_id", d.ID, "attempts", d.Attempts, "error", err)
 		m.metrics.CounterInc("gost_webhook_deliveries_total", "result", "failed")
-		m.store.UpdateWebhookStatus(m.ctx, d.ID, "FAILED", d.Attempts, d.LastAttempt, nil)
+		m.setWebhookStatus(d, "FAILED", nil)
 		return
 	}
 	m.metrics.CounterInc("gost_webhook_deliveries_total", "result", "retry")
@@ -588,5 +608,15 @@ func (m *Manager) sendOneWebhook(client *http.Client, d store.WebhookDelivery) {
 	nextAttempt := now.Add(backoff)
 
 	slog.Warn("Webhook failed, scheduling retry", "job_id", d.JobID, "delivery_id", d.ID, "attempts", d.Attempts, "next_attempt", nextAttempt, "error", err)
-	m.store.UpdateWebhookStatus(m.ctx, d.ID, "PENDING", d.Attempts, d.LastAttempt, &nextAttempt)
+	m.setWebhookStatus(d, "PENDING", &nextAttempt)
+}
+
+// setWebhookStatus persists a delivery-state change, logging (rather than
+// dropping) a store failure — the periodic sweep re-reads state from the
+// store, so an unpersisted transition would otherwise be invisible.
+func (m *Manager) setWebhookStatus(d store.WebhookDelivery, status string, nextAttempt *time.Time) {
+	if err := m.store.UpdateWebhookStatus(m.ctx, d.ID, status, d.Attempts, d.LastAttempt, nextAttempt); err != nil {
+		slog.Error("Failed to persist webhook delivery status",
+			"delivery_id", d.ID, "status", status, "error", err)
+	}
 }

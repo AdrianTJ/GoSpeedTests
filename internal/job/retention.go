@@ -50,4 +50,16 @@ func (m *Manager) runRetention(days int) {
 		slog.Info("Retention purge", "purged_jobs", n, "cutoff", cutoff.Format(time.RFC3339))
 	}
 	m.metrics.CounterAdd("gost_retention_purged_total", float64(n), "kind", "jobs")
+
+	// RUM events share the same TTL: field data is only useful in aggregate
+	// and grows far faster than job rows.
+	nr, err := m.store.PurgeOldRUMEvents(m.ctx, cutoff)
+	if err != nil {
+		slog.Error("RUM retention purge failed", "error", err)
+		return
+	}
+	if nr > 0 {
+		slog.Info("Retention purge", "purged_rum_events", nr, "cutoff", cutoff.Format(time.RFC3339))
+	}
+	m.metrics.CounterAdd("gost_retention_purged_total", float64(nr), "kind", "rum")
 }

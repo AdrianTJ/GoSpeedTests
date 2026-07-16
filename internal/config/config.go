@@ -25,6 +25,25 @@ type Config struct {
 	RetentionDays int `yaml:"retention_days"`
 	// SchedulerEnabled toggles the recurring-monitor loop (default true).
 	SchedulerEnabled bool `yaml:"scheduler_enabled"`
+	// RUMOrigins is the comma-separated Origin allow-list for the public
+	// POST /v1/rum beacon endpoint ("*" allows any). Empty (the default)
+	// keeps the endpoint disabled.
+	RUMOrigins string `yaml:"rum_origins"`
+}
+
+// RUMOriginList splits RUMOrigins into trimmed, non-empty entries.
+func (c *Config) RUMOriginList() []string {
+	if c.RUMOrigins == "" {
+		return nil
+	}
+	parts := strings.Split(c.RUMOrigins, ",")
+	origins := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			origins = append(origins, trimmed)
+		}
+	}
+	return origins
 }
 
 // Default values
@@ -92,6 +111,9 @@ func Load(filePath string) (*Config, error) {
 	// Default is true, so only an explicit "false" disables the scheduler.
 	if val := os.Getenv("GOST_SCHEDULER_ENABLED"); val == "false" {
 		cfg.SchedulerEnabled = false
+	}
+	if val := os.Getenv("GOST_RUM_ORIGINS"); val != "" {
+		cfg.RUMOrigins = val
 	}
 
 	if err := cfg.Validate(); err != nil {

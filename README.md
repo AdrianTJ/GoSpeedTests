@@ -9,7 +9,7 @@
 - **Three-Tiered Measurement:**
   - **Network:** Sub-millisecond tracing for DNS, TCP, TLS, and TTFB using `net/http/httptrace`.
   - **Browser:** Full page load analysis and Waterfall generation via headless Chrome (`chromedp`).
-  - **Vitals:** Real-world Core Web Vitals (LCP, CLS, FCP) and approximated INP via synthetic interaction.
+  - **Vitals:** Lab web vitals via injected PerformanceObservers: LCP, FCP, CLS (proper session windowing), and TBT (the standard lab proxy for INP — real INP needs real users; see Real User Monitoring below).
 - **Asynchronous Engine:** Robust job management with a configurable worker pool and state machine.
 - **Dual Interface:**
   - **CLI (`gost`):** Optimized for ad-hoc testing, scripts, and local developer use.
@@ -89,8 +89,8 @@ assertions:
 Supported metric keys: `network.ttfb_ms`, `network.total_ms`,
 `network.dns_lookup_ms`, `network.tls_handshake_ms`, `network.response_bytes`,
 `browser.page_load_ms`, `browser.dom_content_loaded_ms`,
-`browser.resource_count`, `vitals.lcp_ms`, `vitals.fcp_ms`,
-`lighthouse.performance`, `lighthouse.accessibility`,
+`browser.resource_count`, `vitals.lcp_ms`, `vitals.fcp_ms`, `vitals.cls`,
+`vitals.tbt_ms`, `lighthouse.performance`, `lighthouse.accessibility`,
 `lighthouse.best_practices`, `lighthouse.seo`.
 
 A metric that was never collected (tier failed or not requested) **trips its
@@ -117,6 +117,63 @@ CLI exit codes:
 **API:** pass the same structure inline as `budget` on `POST /v1/jobs`. The
 verdict appears as `budget_result` on `GET /v1/jobs/{id}` and in the webhook
 payload.
+
+## 🐢 Throttling Profiles
+
+Unthrottled headless Chrome on a fast server measures your server, not your
+users. Pass `profile` (API/schedules) or `-profile` (CLI) to run the
+browser-driven tiers under realistic conditions (Chrome DevTools presets):
+
+| Profile | Latency | Down | Up | CPU slowdown |
+|---|---|---|---|---|
+| `none` (default) | — | — | — | 1× |
+| `4g` | 40ms | 10 Mbps | 10 Mbps | 1× |
+| `fast-3g` | 150ms | 1.6 Mbps | 750 Kbps | 4× |
+| `slow-3g` | 400ms | 400 Kbps | 400 Kbps | 4× |
+
+```bash
+./gost -u https://example.com -t vitals -profile slow-3g
+```
+
+Throttling applies to the **browser and vitals tiers only** — the network tier
+uses a plain Go HTTP client and always measures unthrottled, so its numbers
+stay comparable across profiles.
+
+## 📡 Real User Monitoring (RUM)
+
+Lab numbers and field reality differ — real users have slow devices, cold
+caches, and real interactions (which is also why INP can only come from the
+field). GoSpeedTest can ingest real-user beacons and aggregate them with the
+same p75 statistics as lab history.
+
+**1. Enable the endpoint** (off by default — it's a public write endpoint):
+
+```bash
+export GOST_RUM_ORIGINS="https://www.your-site.example"   # or "*"
+```
+
+**2. Add the snippet to your pages** (uses Google's `web-vitals` library):
+
+```html
+<script type="module">
+  import {onLCP, onCLS, onINP, onFCP, onTTFB} from 'https://unpkg.com/web-vitals@4?module';
+  const send = (m) => navigator.sendBeacon('https://YOUR-GOSTD-HOST/v1/rum',
+    JSON.stringify({url: location.href, name: m.name, value: m.value}));
+  onLCP(send); onCLS(send); onINP(send); onFCP(send); onTTFB(send);
+</script>
+```
+
+**3. Query field percentiles** (authenticated):
+
+```bash
+curl -H "X-API-Key: $KEY" 'http://localhost:8080/v1/rum/summary?url=https://www.your-site.example/&window_h=24'
+# {"url":"...","window_hours":24,"metrics":{"LCP":{"count":312,"p50":1810,"p75":2450,"p95":4100}, ...}}
+```
+
+Ingest guardrails: origin allow-list (CORS), 8 KB body cap, value bounds, a
+global rate limit, and the same `GOST_RETENTION_DAYS` TTL as job data. Note
+CORS stops browsers, not curl — treat RUM data as unauthenticated input;
+aggregates (p75 over many events) are robust to noise.
 
 ## ⏱️ Scheduled Monitoring
 
@@ -204,6 +261,7 @@ GoSpeedTest follows a strict configuration hierarchy: **Flags > Environment Vari
 | `GOST_TIMEOUT_S` | `60` | Default per-run timeout in seconds; a request's `timeout_s` overrides it |
 | `GOST_RETENTION_DAYS` | `0` | Purge completed jobs older than N days (0 = keep forever) |
 | `GOST_SCHEDULER_ENABLED` | `true` | Set `false` to disable the recurring-monitor loop |
+| `GOST_RUM_ORIGINS` | *(unset)* | Comma-separated Origin allow-list enabling the public `/v1/rum` beacon endpoint (`*` = any origin; unset = endpoint disabled) |
 | `GOST_ALLOW_PRIVATE_IPS` | `false` | Allow tests/webhooks to target private/loopback IPs (local testing only) |
 | `GOST_CHROME_NO_SANDBOX` | `false` | Disable the Chrome sandbox (only in trusted, isolated environments that can't support it) |
 

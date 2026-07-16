@@ -7,16 +7,16 @@ import (
 	"time"
 )
 
-const scheduleColumns = "id, url, tiers, runs, interval_seconds, budget, webhook_url, enabled, created_at, last_run_at, next_run_at"
+const scheduleColumns = "id, url, tiers, runs, interval_seconds, budget, webhook_url, profile, enabled, created_at, last_run_at, next_run_at"
 
 func scanSchedule(sc rowScanner) (Schedule, error) {
 	var s Schedule
 	var tiersJSON string
-	var budgetJSON, webhookURL sql.NullString
+	var budgetJSON, webhookURL, profileName sql.NullString
 	var lastRun, nextRun sql.NullTime
 
 	if err := sc.Scan(&s.ID, &s.URL, &tiersJSON, &s.Runs, &s.IntervalSeconds,
-		&budgetJSON, &webhookURL, &s.Enabled, &s.CreatedAt, &lastRun, &nextRun); err != nil {
+		&budgetJSON, &webhookURL, &profileName, &s.Enabled, &s.CreatedAt, &lastRun, &nextRun); err != nil {
 		return s, err
 	}
 	_ = json.Unmarshal([]byte(tiersJSON), &s.Tiers)
@@ -24,6 +24,7 @@ func scanSchedule(sc rowScanner) (Schedule, error) {
 		_ = json.Unmarshal([]byte(budgetJSON.String), &s.Budget)
 	}
 	s.WebhookURL = webhookURL.String
+	s.Profile = profileName.String
 	if lastRun.Valid {
 		s.LastRunAt = &lastRun.Time
 	}
@@ -36,10 +37,10 @@ func scanSchedule(sc rowScanner) (Schedule, error) {
 func (s *sqliteStore) CreateSchedule(ctx context.Context, sc *Schedule) error {
 	tiersJSON, _ := json.Marshal(sc.Tiers)
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO schedules (id, url, tiers, runs, interval_seconds, budget, webhook_url, enabled, created_at, last_run_at, next_run_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO schedules (id, url, tiers, runs, interval_seconds, budget, webhook_url, profile, enabled, created_at, last_run_at, next_run_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		sc.ID, sc.URL, string(tiersJSON), sc.Runs, sc.IntervalSeconds,
-		marshalNullable(sc.Budget), sc.WebhookURL, sc.Enabled, sc.CreatedAt, sc.LastRunAt, sc.NextRunAt)
+		marshalNullable(sc.Budget), sc.WebhookURL, sc.Profile, sc.Enabled, sc.CreatedAt, sc.LastRunAt, sc.NextRunAt)
 	return err
 }
 

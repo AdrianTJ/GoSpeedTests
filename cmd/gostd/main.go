@@ -75,6 +75,10 @@ func main() {
 	m.StartRetention(cfg.RetentionDays)
 
 	srv := api.NewServer(m, s, cfg.APIKey, cfg.AllowInsecure)
+	if origins := cfg.RUMOriginList(); len(origins) > 0 {
+		srv.SetRUMOrigins(origins)
+		slog.Info("RUM ingest enabled", "origins", origins)
+	}
 	httpServer := &http.Server{Addr: cfg.ListenAddr, Handler: srv.Routes()}
 
 	go func() {

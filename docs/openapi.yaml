@@ -49,6 +49,11 @@ components:
           $ref: '#/components/schemas/Budget'
         budget_result:
           $ref: '#/components/schemas/BudgetEvaluation'
+        schedule_id:
+          type: string
+          description: Set when the job was created by a schedule.
+        profile:
+          $ref: '#/components/schemas/ThrottlingProfile'
 
     Budget:
       type: object
@@ -148,10 +153,21 @@ components:
         budget:
           $ref: '#/components/schemas/Budget'
         webhook_url: { type: string }
+        profile:
+          $ref: '#/components/schemas/ThrottlingProfile'
         enabled: { type: boolean }
         created_at: { type: string, format: date-time }
         last_run_at: { type: string, format: date-time }
         next_run_at: { type: string, format: date-time }
+
+    ThrottlingProfile:
+      type: string
+      enum: [none, 4g, fast-3g, slow-3g]
+      default: none
+      description: >
+        Network/CPU throttling applied to browser-driven tiers (browser,
+        vitals), mirroring Chrome DevTools presets. The network tier uses a
+        plain Go HTTP client and is never throttled.
 
     CreateScheduleRequest:
       type: object
@@ -171,6 +187,8 @@ components:
         budget:
           $ref: '#/components/schemas/Budget'
         webhook_url: { type: string }
+        profile:
+          $ref: '#/components/schemas/ThrottlingProfile'
 
     CreateJobRequest:
       type: object
@@ -198,6 +216,8 @@ components:
           type: string
         budget:
           $ref: '#/components/schemas/Budget'
+        profile:
+          $ref: '#/components/schemas/ThrottlingProfile'
 
     Result:
       type: object
@@ -209,10 +229,52 @@ components:
         browser:
           type: object
         vitals:
-          type: object
+          $ref: '#/components/schemas/VitalsResult'
         collected_at:
           type: string
           format: date-time
+
+    VitalsResult:
+      type: object
+      description: >
+        Lab web vitals. INP is intentionally absent — it requires real user
+        interactions and cannot be measured in a lab load; TBT is the standard
+        lab proxy.
+      properties:
+        lcp_ms: { type: number, description: Largest Contentful Paint }
+        fcp_ms: { type: number, description: First Contentful Paint }
+        cls:
+          type: number
+          description: Cumulative Layout Shift score (unitless, session-windowed).
+        tbt_ms:
+          type: number
+          description: >
+            Total Blocking Time — long-task time beyond 50ms per task after
+            FCP, over the lab observation window (navigation to load + 3s).
+
+    RUMEventRequest:
+      type: object
+      required: [url, name, value]
+      properties:
+        url: { type: string, description: Absolute http(s) page URL the metric was measured on. }
+        name:
+          type: string
+          enum: [LCP, CLS, INP, FCP, TTFB]
+        value:
+          type: number
+          minimum: 0
+          exclusiveMaximum: 600000
+
+    RUMSummary:
+      type: object
+      properties:
+        url: { type: string }
+        window_hours: { type: integer }
+        metrics:
+          type: object
+          description: Keyed by metric name (LCP, CLS, INP, FCP, TTFB).
+          additionalProperties:
+            $ref: '#/components/schemas/MetricStats'
 
 paths:
   /v1/health:
@@ -444,3 +506,57 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/History'
+
+  /v1/rum:
+    post:
+      summary: Ingest a real-user metric beacon
+      description: >
+        Public (no API key) so browsers can beacon directly, but disabled with
+        404 unless GOST_RUM_ORIGINS is configured. CORS-checked against that
+        allow-list, body capped at 8 KB, values validated, and globally
+        rate-limited. Send with navigator.sendBeacon using the web-vitals
+        library (see README "Real User Monitoring").
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RUMEventRequest'
+      responses:
+        '204':
+          description: Event stored
+        '400':
+          description: Invalid metric name, value, or URL
+        '403':
+          description: Origin not in the allow-list
+        '404':
+          description: Endpoint disabled (GOST_RUM_ORIGINS not configured)
+        '429':
+          description: Rate limit exceeded
+
+  /v1/rum/summary:
+    get:
+      summary: Field-data percentiles for a URL
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema: { type: string }
+        - name: window_h
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 2160, default: 24 }
+          description: Look-back window in hours.
+      responses:
+        '200':
+          description: Per-metric count/avg/p50/p75/p95 from real-user beacons
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RUMSummary'
+        '400':
+          description: Missing url or invalid window_h
+        '401':
+          description: Unauthorized

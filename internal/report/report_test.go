@@ -17,7 +17,7 @@ func fullSummary() Summary {
 		URL:        "http://example.com",
 		Network:    &network.Result{DNSLookupMS: 1, TTFBMS: 2, TotalMS: 3, StatusCode: 200, ResponseBytes: 100},
 		Browser:    &browser.Result{DOMContentLoadedMS: 4, PageLoadMS: 5, ResourceCount: 2},
-		Vitals:     &vitals.Result{LCP: 6, FCP: 7},
+		Vitals:     &vitals.Result{LCP: 6, FCP: 7, CLS: 0.123, TBT: 45},
 		Lighthouse: &lighthouse.Result{Performance: 0.9, SEO: 0.8},
 	}
 }
@@ -28,9 +28,32 @@ func TestWriteJSON_AllTiers(t *testing.T) {
 		t.Fatalf("WriteJSON: %v", err)
 	}
 	out := b.String()
-	for _, want := range []string{`"url"`, `"ttfb_ms"`, `"status_code": 200`, `"page_load_ms"`, `"lcp_ms"`, `"performance"`} {
+	for _, want := range []string{`"url"`, `"ttfb_ms"`, `"status_code": 200`, `"page_load_ms"`, `"lcp_ms"`, `"cls"`, `"tbt_ms"`, `"performance"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("JSON missing %q\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, `"inp_ms"`) {
+		t.Errorf("JSON must not contain the removed inp_ms field\n%s", out)
+	}
+}
+
+func TestWriteTextAndCSV_IncludeCLSAndTBT(t *testing.T) {
+	var text bytes.Buffer
+	WriteText(&text, []Summary{fullSummary()})
+	for _, want := range []string{"CLS", "0.123", "TBT", "45.00ms"} {
+		if !strings.Contains(text.String(), want) {
+			t.Errorf("text output missing %q\n%s", want, text.String())
+		}
+	}
+
+	var csvOut bytes.Buffer
+	if err := WriteCSV(&csvOut, []Summary{fullSummary()}); err != nil {
+		t.Fatalf("WriteCSV: %v", err)
+	}
+	for _, want := range []string{"vitals,cls,0.123", "vitals,tbt_ms,45.00"} {
+		if !strings.Contains(csvOut.String(), want) {
+			t.Errorf("CSV output missing %q\n%s", want, csvOut.String())
 		}
 	}
 }
