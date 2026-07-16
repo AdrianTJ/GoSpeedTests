@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/AdrianTJ/gospeedtest/internal/budget"
 	"github.com/AdrianTJ/gospeedtest/internal/job"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
 	"github.com/AdrianTJ/gospeedtest/internal/tier"
@@ -134,11 +135,12 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		URL        string   `json:"url"`
-		Tiers      []string `json:"tiers"`
-		Runs       int      `json:"runs"`
-		TimeoutS   int      `json:"timeout_s"`
-		WebhookURL string   `json:"webhook_url"`
+		URL        string         `json:"url"`
+		Tiers      []string       `json:"tiers"`
+		Runs       int            `json:"runs"`
+		TimeoutS   int            `json:"timeout_s"`
+		WebhookURL string         `json:"webhook_url"`
+		Budget     *budget.Budget `json:"budget"`
 	}
 
 	// Cap the request body so a large payload cannot exhaust memory.
@@ -184,7 +186,21 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job, err := s.manager.SubmitWithTimeout(r.Context(), req.URL, req.Tiers, req.Runs, req.WebhookURL, req.TimeoutS)
+	if req.Budget != nil {
+		if err := req.Budget.Validate(); err != nil {
+			http.Error(w, "invalid budget: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	created, err := s.manager.SubmitJob(r.Context(), job.SubmitOptions{
+		URL:        req.URL,
+		Tiers:      req.Tiers,
+		Runs:       req.Runs,
+		TimeoutS:   req.TimeoutS,
+		WebhookURL: req.WebhookURL,
+		Budget:     req.Budget,
+	})
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -194,8 +210,8 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(map[string]string{
-		"job_id": job.ID,
-		"status": string(job.Status),
+		"job_id": created.ID,
+		"status": string(created.Status),
 	})
 }
 
@@ -222,7 +238,7 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	resp := map[string]interface{}{
 		"job_id":       job.ID,
 		"status":       job.Status,
 		"url":          job.URL,
@@ -230,7 +246,14 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 		"completed_at": job.CompletedAt,
 		"error":        job.Error,
 		"results":      results,
-	})
+	}
+	if job.Budget != nil {
+		resp["budget"] = job.Budget
+	}
+	if job.BudgetResult != nil {
+		resp["budget_result"] = job.BudgetResult
+	}
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
