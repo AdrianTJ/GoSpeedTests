@@ -6,6 +6,7 @@ import (
 
 	"github.com/AdrianTJ/gospeedtest/internal/collector/lighthouse"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
+	"github.com/AdrianTJ/gospeedtest/internal/collector/vitals"
 )
 
 func f(v float64) *float64 { return &v }
@@ -223,5 +224,25 @@ func TestFlatten_NilTiersSafe(t *testing.T) {
 func TestLoadFile_Missing(t *testing.T) {
 	if _, err := LoadFile("/nonexistent/budget.yaml"); err == nil {
 		t.Error("expected error for missing file")
+	}
+}
+
+func TestVitalsCLSAndTBTKeys(t *testing.T) {
+	b := Budget{Assertions: map[string]Assertion{
+		"vitals.cls":    {Max: f(0.1)},
+		"vitals.tbt_ms": {Max: f(200)},
+	}}
+	if err := b.Validate(); err != nil {
+		t.Fatalf("cls/tbt keys must validate: %v", err)
+	}
+
+	m := Flatten(nil, nil, &vitals.Result{LCP: 1, FCP: 1, CLS: 0.25, TBT: 300}, nil)
+	if m["vitals.cls"] != 0.25 || m["vitals.tbt_ms"] != 300 {
+		t.Errorf("flatten mismatch: %v", m)
+	}
+
+	eval := Evaluate(&b, m)
+	if eval.Status != StatusFail {
+		t.Errorf("status = %v, want fail (both thresholds exceeded)", eval.Status)
 	}
 }

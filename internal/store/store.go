@@ -42,6 +42,7 @@ type Job struct {
 	Budget       *budget.Budget     `json:"budget,omitempty"`
 	BudgetResult *budget.Evaluation `json:"budget_result,omitempty"`
 	ScheduleID   string             `json:"schedule_id,omitempty"`
+	Profile      string             `json:"profile,omitempty"`
 	Error        *string            `json:"error,omitempty"`
 	CreatedAt    time.Time          `json:"created_at"`
 	StartedAt    *time.Time         `json:"started_at,omitempty"`
@@ -93,10 +94,22 @@ type Schedule struct {
 	IntervalSeconds int            `json:"interval_seconds"`
 	Budget          *budget.Budget `json:"budget,omitempty"`
 	WebhookURL      string         `json:"webhook_url,omitempty"`
+	Profile         string         `json:"profile,omitempty"`
 	Enabled         bool           `json:"enabled"`
 	CreatedAt       time.Time      `json:"created_at"`
 	LastRunAt       *time.Time     `json:"last_run_at,omitempty"`
 	NextRunAt       *time.Time     `json:"next_run_at,omitempty"`
+}
+
+// RUMEvent is one real-user measurement beaconed from a browser via the
+// public /v1/rum endpoint.
+type RUMEvent struct {
+	ID        string    `json:"id"`
+	URL       string    `json:"url"`
+	Metric    string    `json:"metric"` // LCP, CLS, INP, FCP, TTFB
+	Value     float64   `json:"value"`
+	UserAgent string    `json:"user_agent,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // WebhookDelivery tracks the state of a webhook notification.
@@ -137,6 +150,11 @@ type Store interface {
 
 	// Retention
 	PurgeOldJobs(ctx context.Context, olderThan time.Time) (int, error)
+	PurgeOldRUMEvents(ctx context.Context, olderThan time.Time) (int, error)
+
+	// RUM (real-user monitoring)
+	SaveRUMEvent(ctx context.Context, e *RUMEvent) error
+	GetRUMValues(ctx context.Context, url string, since time.Time) (map[string][]float64, error)
 
 	// Webhooks
 	EnqueueWebhook(ctx context.Context, delivery *WebhookDelivery) error
@@ -257,6 +275,22 @@ func (s *sqliteStore) initSchema() error {
 			CREATE INDEX IF NOT EXISTS idx_jobs_completed_at ON jobs(completed_at);
 			`,
 		},
+		{
+			Version: 7,
+			SQL: `
+			ALTER TABLE jobs ADD COLUMN profile TEXT;
+			ALTER TABLE schedules ADD COLUMN profile TEXT;
+			CREATE TABLE IF NOT EXISTS rum_events (
+				id         TEXT     PRIMARY KEY,
+				url        TEXT     NOT NULL,
+				metric     TEXT     NOT NULL,
+				value      REAL     NOT NULL,
+				user_agent TEXT,
+				created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			);
+			CREATE INDEX IF NOT EXISTS idx_rum_url_metric_time ON rum_events(url, metric, created_at);
+			`,
+		},
 	}
 
 	return migrations.Run(context.Background(), s.db, m)
@@ -268,9 +302,9 @@ func (s *sqliteStore) CreateJob(ctx context.Context, job *Job) error {
 	budgetJSON := marshalNullable(job.Budget)
 
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO jobs (id, url, status, tiers, runs, timeout_s, tags, webhook_url, budget, schedule_id, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		job.ID, job.URL, job.Status, string(tiersJSON), job.Runs, job.TimeoutS, string(tagsJSON), job.WebhookURL, budgetJSON, job.ScheduleID, job.CreatedAt)
+		`INSERT INTO jobs (id, url, status, tiers, runs, timeout_s, tags, webhook_url, budget, schedule_id, profile, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		job.ID, job.URL, job.Status, string(tiersJSON), job.Runs, job.TimeoutS, string(tagsJSON), job.WebhookURL, budgetJSON, job.ScheduleID, job.Profile, job.CreatedAt)
 	return err
 }
 
@@ -286,7 +320,7 @@ func marshalNullable(v any) any {
 
 // jobColumns is the canonical SELECT column list for a jobs row, kept in sync
 // with scanJob's Scan order.
-const jobColumns = "id, url, status, tiers, runs, timeout_s, tags, webhook_url, budget, budget_result, schedule_id, error, created_at, started_at, completed_at"
+const jobColumns = "id, url, status, tiers, runs, timeout_s, tags, webhook_url, budget, budget_result, schedule_id, profile, error, created_at, started_at, completed_at"
 
 // rowScanner is satisfied by both *sql.Row and *sql.Rows.
 type rowScanner interface {
@@ -298,17 +332,18 @@ func scanJob(sc rowScanner) (Job, error) {
 	var job Job
 	// webhook_url is NullString too: rows written before migration v2 added
 	// the column carry SQL NULL, not the empty string.
-	var tiersJSON, tagsJSON, webhookURL, budgetJSON, budgetResultJSON, scheduleID sql.NullString
+	var tiersJSON, tagsJSON, webhookURL, budgetJSON, budgetResultJSON, scheduleID, profileName sql.NullString
 	var startedAt, completedAt sql.NullTime
 
 	if err := sc.Scan(
 		&job.ID, &job.URL, &job.Status, &tiersJSON, &job.Runs, &job.TimeoutS, &tagsJSON, &webhookURL,
-		&budgetJSON, &budgetResultJSON, &scheduleID, &job.Error,
+		&budgetJSON, &budgetResultJSON, &scheduleID, &profileName, &job.Error,
 		&job.CreatedAt, &startedAt, &completedAt); err != nil {
 		return job, err
 	}
 	job.WebhookURL = webhookURL.String
 	job.ScheduleID = scheduleID.String
+	job.Profile = profileName.String
 
 	if tiersJSON.Valid {
 		_ = json.Unmarshal([]byte(tiersJSON.String), &job.Tiers)

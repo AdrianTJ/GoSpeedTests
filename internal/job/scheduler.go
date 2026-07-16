@@ -77,6 +77,7 @@ func (m *Manager) runDueSchedules(now time.Time) {
 			WebhookURL: sc.WebhookURL,
 			Budget:     sc.Budget,
 			ScheduleID: sc.ID,
+			Profile:    sc.Profile,
 		})
 		if err != nil {
 			slog.Error("Scheduler failed to submit job", "schedule_id", sc.ID, "url", sc.URL, "error", err)

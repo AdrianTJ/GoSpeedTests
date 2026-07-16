@@ -48,6 +48,8 @@ func WriteText(w io.Writer, summaries []Summary) {
 		if s.Vitals != nil {
 			fmt.Fprintf(tw, "%s\tvitals\tLCP\t%.2fms\n", s.URL, s.Vitals.LCP)
 			fmt.Fprintf(tw, "%s\tvitals\tFCP\t%.2fms\n", s.URL, s.Vitals.FCP)
+			fmt.Fprintf(tw, "%s\tvitals\tCLS\t%.3f\n", s.URL, s.Vitals.CLS)
+			fmt.Fprintf(tw, "%s\tvitals\tTBT\t%.2fms\n", s.URL, s.Vitals.TBT)
 		}
 		if s.Lighthouse != nil {
 			fmt.Fprintf(tw, "%s\tlighthouse\tPerformance\t%.2f\n", s.URL, s.Lighthouse.Performance)
@@ -91,6 +93,8 @@ func WriteCSV(w io.Writer, summaries []Summary) error {
 		if s.Vitals != nil {
 			cw.Write([]string{s.URL, "vitals", "lcp_ms", fmt.Sprintf("%.2f", s.Vitals.LCP)})
 			cw.Write([]string{s.URL, "vitals", "fcp_ms", fmt.Sprintf("%.2f", s.Vitals.FCP)})
+			cw.Write([]string{s.URL, "vitals", "cls", fmt.Sprintf("%.3f", s.Vitals.CLS)})
+			cw.Write([]string{s.URL, "vitals", "tbt_ms", fmt.Sprintf("%.2f", s.Vitals.TBT)})
 		}
 		if s.Lighthouse != nil {
 			cw.Write([]string{s.URL, "lighthouse", "performance", fmt.Sprintf("%.2f", s.Lighthouse.Performance)})

@@ -19,6 +19,7 @@ import (
 	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/vitals"
 	"github.com/AdrianTJ/gospeedtest/internal/metrics"
+	"github.com/AdrianTJ/gospeedtest/internal/profile"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
 	"github.com/AdrianTJ/gospeedtest/internal/validator"
 	"github.com/google/uuid"
@@ -131,6 +132,7 @@ type SubmitOptions struct {
 	WebhookURL string
 	Budget     *budget.Budget
 	ScheduleID string
+	Profile    string // throttling profile name; "" or "none" = unthrottled
 }
 
 // Submit enqueues a new job for execution using the manager's default timeout.
@@ -163,6 +165,7 @@ func (m *Manager) SubmitJob(ctx context.Context, opts SubmitOptions) (*store.Job
 		WebhookURL: opts.WebhookURL,
 		Budget:     opts.Budget,
 		ScheduleID: opts.ScheduleID,
+		Profile:    opts.Profile,
 		CreatedAt:  time.Now(),
 	}
 
@@ -324,6 +327,10 @@ func (m *Manager) processJob(job *store.Job) {
 			}
 		}
 
+		// The profile was validated at submission; an unknown name here (e.g.
+		// a row written by a newer version) falls back to unthrottled.
+		prof, _ := profile.Get(job.Profile)
+
 		// 2. Browser Tier
 		if hasTier("browser") {
 			tiersRun++
@@ -331,7 +338,7 @@ func (m *Manager) processJob(job *store.Job) {
 			if bCtx, bCancel, err := m.browserManager().NewContext(runCtx); err != nil {
 				fail("browser", err)
 			} else {
-				browserRes, err := browser.Collect(bCtx, job.URL)
+				browserRes, err := collectThrottled(bCtx, job.URL, prof, browser.Collect)
 				bCancel()
 				if err != nil {
 					fail("browser", err)
@@ -348,7 +355,7 @@ func (m *Manager) processJob(job *store.Job) {
 			if vCtx, vCancel, err := m.browserManager().NewContext(runCtx); err != nil {
 				fail("vitals", err)
 			} else {
-				vitalsRes, err := vitals.Collect(vCtx, job.URL)
+				vitalsRes, err := collectThrottled(vCtx, job.URL, prof, vitals.Collect)
 				vCancel()
 				if err != nil {
 					fail("vitals", err)
@@ -426,6 +433,15 @@ func (m *Manager) processJob(job *store.Job) {
 	if job.WebhookURL != "" {
 		m.sendWebhook(job.ID)
 	}
+}
+
+// collectThrottled applies the throttling profile to the tab (no-op for
+// "none") and then runs the collector on it.
+func collectThrottled[T any](ctx context.Context, url string, prof profile.Profile, collect func(context.Context, string) (*T, error)) (*T, error) {
+	if err := profile.Apply(ctx, prof); err != nil {
+		return nil, err
+	}
+	return collect(ctx, url)
 }
 
 // deriveStatus maps per-run tier outcomes to a final job status: COMPLETED when

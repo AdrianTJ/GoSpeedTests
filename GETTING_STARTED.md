@@ -68,6 +68,12 @@ Use this when you want to run a quick test right now.
     ```bash
     ./gost -u https://google.com -t lighthouse
     ```
+*   **Realistic Conditions:** By default the browser tiers run unthrottled on
+    your (fast) machine. Simulate a mid-range phone on mobile data:
+    ```bash
+    ./gost -u https://google.com -t vitals -profile slow-3g
+    # profiles: none (default), 4g, fast-3g, slow-3g — browser/vitals tiers only
+    ```
 *   **Performance Budget (CI gate):** Fail the build when the page gets slow.
     Create `budget.yaml`:
     ```yaml
@@ -113,9 +119,17 @@ curl -X POST http://localhost:8080/v1/jobs \
   `budget_result` on `GET /v1/jobs/{id}` and in the webhook payload. See the
   README's "Performance Budgets" section for the schema and metric keys.
 
+- `profile` (optional): throttling profile for the browser-driven tiers
+  (`none`, `4g`, `fast-3g`, `slow-3g`).
+
 Curious how the URL has been trending? `GET /v1/history?url=https://example.com`
 returns per-metric `avg`/`p50`/`p75`/`p95` — the `p75` numbers are what Google
 uses to score Core Web Vitals.
+
+Want *field* data too? Set `GOST_RUM_ORIGINS`, drop the snippet from the
+README's "Real User Monitoring" section on your pages, and real visitors'
+LCP/CLS/INP/FCP/TTFB will flow into `GET /v1/rum/summary?url=...` — including
+INP, which lab tests fundamentally can't measure.
 
 ### Continuous Monitoring (Schedules)
 
