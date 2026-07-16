@@ -68,6 +68,18 @@ Use this when you want to run a quick test right now.
     ```bash
     ./gost -u https://google.com -t lighthouse
     ```
+*   **Performance Budget (CI gate):** Fail the build when the page gets slow.
+    Create `budget.yaml`:
+    ```yaml
+    assertions:
+      network.ttfb_ms: { max: 500 }
+      vitals.lcp_ms:   { max: 2500, level: warn }
+    ```
+    Then:
+    ```bash
+    ./gost -u https://google.com -t all -budget budget.yaml
+    # exit code 3 = an error-level assertion failed; warn-level trips exit 0
+    ```
 
 ---
 
@@ -97,6 +109,13 @@ curl -X POST http://localhost:8080/v1/jobs \
 - `runs`: how many times to repeat the measurement (1–10).
 - `timeout_s`: per-run timeout in seconds (0–600); omit or use `0` for the server default.
 - `webhook_url` (optional): the daemon POSTs the final result there on completion.
+- `budget` (optional): inline performance budget; the verdict shows up as
+  `budget_result` on `GET /v1/jobs/{id}` and in the webhook payload. See the
+  README's "Performance Budgets" section for the schema and metric keys.
+
+Curious how the URL has been trending? `GET /v1/history?url=https://example.com`
+returns per-metric `avg`/`p50`/`p75`/`p95` — the `p75` numbers are what Google
+uses to score Core Web Vitals.
 
 ---
 

@@ -45,6 +45,95 @@ components:
         completed_at:
           type: string
           format: date-time
+        budget:
+          $ref: '#/components/schemas/Budget'
+        budget_result:
+          $ref: '#/components/schemas/BudgetEvaluation'
+
+    Budget:
+      type: object
+      description: >
+        Performance budget: assertions keyed by metric name
+        (e.g. network.ttfb_ms, network.total_ms, network.dns_lookup_ms,
+        network.tls_handshake_ms, network.response_bytes, browser.page_load_ms,
+        browser.dom_content_loaded_ms, browser.resource_count, vitals.lcp_ms,
+        vitals.fcp_ms, lighthouse.performance, lighthouse.accessibility,
+        lighthouse.best_practices, lighthouse.seo).
+      required:
+        - assertions
+      properties:
+        assertions:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/BudgetAssertion'
+      example:
+        assertions:
+          network.ttfb_ms: { max: 500 }
+          vitals.lcp_ms: { max: 2500, level: warn }
+          lighthouse.performance: { min: 0.9 }
+
+    BudgetAssertion:
+      type: object
+      description: Threshold on one metric. At least one of max/min is required.
+      properties:
+        max:
+          type: number
+        min:
+          type: number
+        level:
+          type: string
+          enum: [warn, error]
+          default: error
+
+    BudgetEvaluation:
+      type: object
+      description: >
+        Outcome of evaluating the budget against the median of the job's runs.
+        Evaluated at job completion; never affects the job status itself.
+      properties:
+        status:
+          type: string
+          enum: [pass, warn, fail]
+        assertions:
+          type: array
+          items:
+            type: object
+            properties:
+              metric: { type: string }
+              level: { type: string, enum: [warn, error] }
+              op: { type: string, enum: [max, min] }
+              threshold: { type: number }
+              actual:
+                type: number
+                nullable: true
+                description: null when the metric was never collected (that trips the assertion).
+              status: { type: string, enum: [pass, warn, fail] }
+
+    MetricStats:
+      type: object
+      properties:
+        count: { type: integer }
+        avg: { type: number }
+        p50: { type: number }
+        p75: { type: number }
+        p95: { type: number }
+
+    History:
+      type: object
+      properties:
+        url: { type: string }
+        test_count: { type: integer }
+        avg_ttfb_ms:
+          type: number
+          description: Legacy field, equals metrics["network.ttfb_ms"].avg.
+        avg_total_ms:
+          type: number
+          description: Legacy field, equals metrics["network.total_ms"].avg.
+        metrics:
+          type: object
+          description: Keyed by budget metric names (e.g. network.ttfb_ms, vitals.lcp_ms).
+          additionalProperties:
+            $ref: '#/components/schemas/MetricStats'
 
     CreateJobRequest:
       type: object
@@ -70,6 +159,8 @@ components:
           maximum: 600
         webhook_url:
           type: string
+        budget:
+          $ref: '#/components/schemas/Budget'
 
     Result:
       type: object
@@ -135,7 +226,7 @@ paths:
                   job_id: { type: string }
                   status: { type: string }
         '400':
-          description: Invalid request (bad URL, invalid webhook_url, or runs > 10)
+          description: Invalid request (bad URL, invalid webhook_url, invalid budget, or runs > 10)
         '401':
           description: Unauthorized
 
@@ -194,4 +285,8 @@ paths:
           schema: { type: string }
       responses:
         '200':
-          description: Historical averages
+          description: Historical statistics (avg/p50/p75/p95 per metric)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/History'

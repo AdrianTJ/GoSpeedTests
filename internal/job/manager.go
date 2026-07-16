@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/AdrianTJ/gospeedtest/internal/budget"
 	"github.com/AdrianTJ/gospeedtest/internal/chrome"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/browser"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/lighthouse"
@@ -103,14 +104,31 @@ func (m *Manager) Stop() {
 	}
 }
 
+// SubmitOptions describes a job submission. Zero values fall back to
+// manager defaults where sensible (TimeoutS).
+type SubmitOptions struct {
+	URL        string
+	Tiers      []string
+	Runs       int
+	TimeoutS   int
+	WebhookURL string
+	Budget     *budget.Budget
+}
+
 // Submit enqueues a new job for execution using the manager's default timeout.
 func (m *Manager) Submit(ctx context.Context, url string, tiers []string, runs int, webhookURL string) (*store.Job, error) {
-	return m.SubmitWithTimeout(ctx, url, tiers, runs, webhookURL, 0)
+	return m.SubmitJob(ctx, SubmitOptions{URL: url, Tiers: tiers, Runs: runs, WebhookURL: webhookURL})
 }
 
 // SubmitWithTimeout enqueues a new job with a specific per-run timeout (seconds).
 // A timeoutS <= 0 falls back to the manager default.
 func (m *Manager) SubmitWithTimeout(ctx context.Context, url string, tiers []string, runs int, webhookURL string, timeoutS int) (*store.Job, error) {
+	return m.SubmitJob(ctx, SubmitOptions{URL: url, Tiers: tiers, Runs: runs, WebhookURL: webhookURL, TimeoutS: timeoutS})
+}
+
+// SubmitJob enqueues a new job described by opts.
+func (m *Manager) SubmitJob(ctx context.Context, opts SubmitOptions) (*store.Job, error) {
+	timeoutS := opts.TimeoutS
 	if timeoutS <= 0 {
 		timeoutS = m.defaultTimeoutS
 	}
@@ -119,12 +137,13 @@ func (m *Manager) SubmitWithTimeout(ctx context.Context, url string, tiers []str
 	}
 	job := &store.Job{
 		ID:         "jb_" + uuid.New().String()[:8],
-		URL:        url,
+		URL:        opts.URL,
 		Status:     store.StatusPending,
-		Tiers:      tiers,
-		Runs:       runs,
+		Tiers:      opts.Tiers,
+		Runs:       opts.Runs,
 		TimeoutS:   timeoutS,
-		WebhookURL: webhookURL,
+		WebhookURL: opts.WebhookURL,
+		Budget:     opts.Budget,
 		CreatedAt:  time.Now(),
 	}
 
@@ -249,6 +268,7 @@ func (m *Manager) processJob(job *store.Job) {
 	failedRuns := 0
 	failedTiers := map[string]bool{}
 	var lastErr error
+	var runMetrics []map[string]float64 // per-run flattened metrics for budget evaluation
 	for i := 1; i <= job.Runs; i++ {
 		resultRecord := &store.Result{
 			ID:          "res_" + uuid.New().String()[:8],
@@ -340,12 +360,29 @@ func (m *Manager) processJob(job *store.Job) {
 		if err := m.store.SaveResult(m.ctx, resultRecord); err != nil {
 			slog.Error("Failed to save result", "job_id", job.ID, "run_index", i, "error", err)
 		}
+
+		if job.Budget != nil {
+			runMetrics = append(runMetrics,
+				budget.Flatten(resultRecord.Network, resultRecord.Browser, resultRecord.Vitals, resultRecord.Lighthouse))
+		}
 	}
 
 	status, errStr := deriveStatus(job.Runs, cleanRuns, failedRuns, failedTiers, lastErr)
 
 	if err := m.store.UpdateJobStatus(m.ctx, job.ID, status, errStr); err != nil {
 		slog.Error("Failed to update job status", "job_id", job.ID, "status", status, "error", err)
+	}
+
+	// Budgets are judged on the median across runs so a single noisy run does
+	// not decide the verdict. Persist before sendWebhook: the webhook re-reads
+	// the job, so the payload picks up the evaluation.
+	if job.Budget != nil {
+		eval := budget.Evaluate(job.Budget, budget.Aggregate(runMetrics))
+		if err := m.store.SetJobBudgetResult(m.ctx, job.ID, eval); err != nil {
+			slog.Error("Failed to persist budget result", "job_id", job.ID, "error", err)
+		} else {
+			slog.Info("Budget evaluated", "job_id", job.ID, "budget_status", eval.Status)
+		}
 	}
 
 	if job.WebhookURL != "" {
@@ -396,6 +433,9 @@ func (m *Manager) sendWebhook(jobID string) {
 		"status":  job.Status,
 		"url":     job.URL,
 		"results": results,
+	}
+	if job.BudgetResult != nil {
+		payload["budget_result"] = job.BudgetResult
 	}
 	body, _ := json.Marshal(payload)
 

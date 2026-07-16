@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/AdrianTJ/gospeedtest/internal/budget"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/browser"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/lighthouse"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/vitals"
+	"github.com/AdrianTJ/gospeedtest/internal/stats"
 	"github.com/AdrianTJ/gospeedtest/internal/store/migrations"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -29,18 +31,20 @@ const (
 
 // Job represents a single test request for a URL.
 type Job struct {
-	ID          string            `json:"id"`
-	URL         string            `json:"url"`
-	Status      JobStatus         `json:"status"`
-	Tiers       []string          `json:"tiers"`
-	Runs        int               `json:"runs"`
-	TimeoutS    int               `json:"timeout_s"`
-	Tags        map[string]string `json:"tags"`
-	WebhookURL  string            `json:"webhook_url,omitempty"`
-	Error       *string           `json:"error,omitempty"`
-	CreatedAt   time.Time         `json:"created_at"`
-	StartedAt   *time.Time        `json:"started_at,omitempty"`
-	CompletedAt *time.Time        `json:"completed_at,omitempty"`
+	ID           string             `json:"id"`
+	URL          string             `json:"url"`
+	Status       JobStatus          `json:"status"`
+	Tiers        []string           `json:"tiers"`
+	Runs         int                `json:"runs"`
+	TimeoutS     int                `json:"timeout_s"`
+	Tags         map[string]string  `json:"tags"`
+	WebhookURL   string             `json:"webhook_url,omitempty"`
+	Budget       *budget.Budget     `json:"budget,omitempty"`
+	BudgetResult *budget.Evaluation `json:"budget_result,omitempty"`
+	Error        *string            `json:"error,omitempty"`
+	CreatedAt    time.Time          `json:"created_at"`
+	StartedAt    *time.Time         `json:"started_at,omitempty"`
+	CompletedAt  *time.Time         `json:"completed_at,omitempty"`
 }
 
 // Result represents the metrics collected for a single run of a job.
@@ -55,12 +59,27 @@ type Result struct {
 	CollectedAt time.Time          `json:"collected_at"`
 }
 
+// MetricStats holds the descriptive statistics for one metric across runs.
+// Web-perf convention scores at the 75th percentile; the average is kept for
+// backward compatibility but P75 is the number to alert on.
+type MetricStats struct {
+	Count int     `json:"count"`
+	Avg   float64 `json:"avg"`
+	P50   float64 `json:"p50"`
+	P75   float64 `json:"p75"`
+	P95   float64 `json:"p95"`
+}
+
 // History summarizes aggregate metrics for all recorded runs of a URL.
+// AvgTTFBMS/AvgTotalMS predate Metrics and are kept for backward
+// compatibility; Metrics is keyed by the budget metric names
+// (e.g. "network.ttfb_ms", "vitals.lcp_ms").
 type History struct {
-	URL        string  `json:"url"`
-	TestCount  int     `json:"test_count"`
-	AvgTTFBMS  float64 `json:"avg_ttfb_ms"`
-	AvgTotalMS float64 `json:"avg_total_ms"`
+	URL        string                 `json:"url"`
+	TestCount  int                    `json:"test_count"`
+	AvgTTFBMS  float64                `json:"avg_ttfb_ms"`
+	AvgTotalMS float64                `json:"avg_total_ms"`
+	Metrics    map[string]MetricStats `json:"metrics"`
 }
 
 // WebhookDelivery tracks the state of a webhook notification.
@@ -85,6 +104,7 @@ type Store interface {
 	SaveResult(ctx context.Context, result *Result) error
 	GetResultsByJobID(ctx context.Context, jobID string) ([]Result, error)
 	GetHistory(ctx context.Context, url string) (*History, error)
+	SetJobBudgetResult(ctx context.Context, id string, eval *budget.Evaluation) error
 	DeleteJob(ctx context.Context, id string) error
 	RecoverInterruptedJobs(ctx context.Context) (int, error)
 
@@ -175,6 +195,13 @@ func (s *sqliteStore) initSchema() error {
 			Version: 4,
 			SQL:     `ALTER TABLE results ADD COLUMN lighthouse TEXT`,
 		},
+		{
+			Version: 5,
+			SQL: `
+			ALTER TABLE jobs ADD COLUMN budget TEXT;
+			ALTER TABLE jobs ADD COLUMN budget_result TEXT;
+			`,
+		},
 	}
 
 	return migrations.Run(context.Background(), s.db, m)
@@ -183,17 +210,28 @@ func (s *sqliteStore) initSchema() error {
 func (s *sqliteStore) CreateJob(ctx context.Context, job *Job) error {
 	tiersJSON, _ := json.Marshal(job.Tiers)
 	tagsJSON, _ := json.Marshal(job.Tags)
+	budgetJSON := marshalNullable(job.Budget)
 
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO jobs (id, url, status, tiers, runs, timeout_s, tags, webhook_url, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		job.ID, job.URL, job.Status, string(tiersJSON), job.Runs, job.TimeoutS, string(tagsJSON), job.WebhookURL, job.CreatedAt)
+		`INSERT INTO jobs (id, url, status, tiers, runs, timeout_s, tags, webhook_url, budget, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		job.ID, job.URL, job.Status, string(tiersJSON), job.Runs, job.TimeoutS, string(tagsJSON), job.WebhookURL, budgetJSON, job.CreatedAt)
 	return err
+}
+
+// marshalNullable JSON-encodes v for a nullable TEXT column: a nil pointer
+// becomes SQL NULL rather than the string "null".
+func marshalNullable(v any) any {
+	data, err := json.Marshal(v)
+	if err != nil || string(data) == "null" {
+		return nil
+	}
+	return string(data)
 }
 
 // jobColumns is the canonical SELECT column list for a jobs row, kept in sync
 // with scanJob's Scan order.
-const jobColumns = "id, url, status, tiers, runs, timeout_s, tags, webhook_url, error, created_at, started_at, completed_at"
+const jobColumns = "id, url, status, tiers, runs, timeout_s, tags, webhook_url, budget, budget_result, error, created_at, started_at, completed_at"
 
 // rowScanner is satisfied by both *sql.Row and *sql.Rows.
 type rowScanner interface {
@@ -203,20 +241,30 @@ type rowScanner interface {
 // scanJob scans one jobs row into a Job, decoding the JSON/nullable columns.
 func scanJob(sc rowScanner) (Job, error) {
 	var job Job
-	var tiersJSON, tagsJSON sql.NullString
+	// webhook_url is NullString too: rows written before migration v2 added
+	// the column carry SQL NULL, not the empty string.
+	var tiersJSON, tagsJSON, webhookURL, budgetJSON, budgetResultJSON sql.NullString
 	var startedAt, completedAt sql.NullTime
 
 	if err := sc.Scan(
-		&job.ID, &job.URL, &job.Status, &tiersJSON, &job.Runs, &job.TimeoutS, &tagsJSON, &job.WebhookURL, &job.Error,
+		&job.ID, &job.URL, &job.Status, &tiersJSON, &job.Runs, &job.TimeoutS, &tagsJSON, &webhookURL,
+		&budgetJSON, &budgetResultJSON, &job.Error,
 		&job.CreatedAt, &startedAt, &completedAt); err != nil {
 		return job, err
 	}
+	job.WebhookURL = webhookURL.String
 
 	if tiersJSON.Valid {
 		_ = json.Unmarshal([]byte(tiersJSON.String), &job.Tiers)
 	}
 	if tagsJSON.Valid {
 		_ = json.Unmarshal([]byte(tagsJSON.String), &job.Tags)
+	}
+	if budgetJSON.Valid {
+		_ = json.Unmarshal([]byte(budgetJSON.String), &job.Budget)
+	}
+	if budgetResultJSON.Valid {
+		_ = json.Unmarshal([]byte(budgetResultJSON.String), &job.BudgetResult)
 	}
 	if startedAt.Valid {
 		job.StartedAt = &startedAt.Time
@@ -320,30 +368,78 @@ func (s *sqliteStore) GetResultsByJobID(ctx context.Context, jobID string) ([]Re
 	return results, nil
 }
 
+// historyLimit caps how many recent results GetHistory loads. Percentiles
+// are computed in Go (SQLite has no percentile function), so the row set
+// must be bounded.
+const historyLimit = 1000
+
 func (s *sqliteStore) GetHistory(ctx context.Context, url string) (*History, error) {
-	query := `
-		SELECT 
-			COUNT(*) as test_count,
-			ROUND(AVG(json_extract(r.network, '$.ttfb_ms')), 2) as avg_ttfb_ms,
-			ROUND(AVG(json_extract(r.network, '$.total_ms')), 2) as avg_total_ms
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT r.network, r.browser, r.vitals, r.lighthouse
 		FROM results r
 		JOIN jobs j ON r.job_id = j.id
 		WHERE j.url = ?
-	`
-	var count int
-	var ttfb, total sql.NullFloat64
-
-	err := s.db.QueryRowContext(ctx, query, url).Scan(&count, &ttfb, &total)
+		ORDER BY r.collected_at DESC
+		LIMIT ?`, url, historyLimit)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
-	return &History{
-		URL:        url,
-		TestCount:  count,
-		AvgTTFBMS:  ttfb.Float64,
-		AvgTotalMS: total.Float64,
-	}, nil
+	values := make(map[string][]float64)
+	count := 0
+	for rows.Next() {
+		var networkJSON, browserJSON, vitalsJSON, lighthouseJSON sql.NullString
+		if err := rows.Scan(&networkJSON, &browserJSON, &vitalsJSON, &lighthouseJSON); err != nil {
+			return nil, err
+		}
+		count++
+
+		var n *network.Result
+		var br *browser.Result
+		var v *vitals.Result
+		var lh *lighthouse.Result
+		if networkJSON.Valid {
+			_ = json.Unmarshal([]byte(networkJSON.String), &n)
+		}
+		if browserJSON.Valid {
+			_ = json.Unmarshal([]byte(browserJSON.String), &br)
+		}
+		if vitalsJSON.Valid {
+			_ = json.Unmarshal([]byte(vitalsJSON.String), &v)
+		}
+		if lighthouseJSON.Valid {
+			_ = json.Unmarshal([]byte(lighthouseJSON.String), &lh)
+		}
+		for key, val := range budget.Flatten(n, br, v, lh) {
+			values[key] = append(values[key], val)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	h := &History{URL: url, TestCount: count, Metrics: make(map[string]MetricStats, len(values))}
+	for key, vs := range values {
+		h.Metrics[key] = MetricStats{
+			Count: len(vs),
+			Avg:   stats.Mean(vs),
+			P50:   stats.Percentile(vs, 50),
+			P75:   stats.Percentile(vs, 75),
+			P95:   stats.Percentile(vs, 95),
+		}
+	}
+	// Legacy fields, kept for pre-percentile consumers.
+	h.AvgTTFBMS = h.Metrics["network.ttfb_ms"].Avg
+	h.AvgTotalMS = h.Metrics["network.total_ms"].Avg
+	return h, nil
+}
+
+// SetJobBudgetResult persists the budget evaluation for a job after its
+// runs complete.
+func (s *sqliteStore) SetJobBudgetResult(ctx context.Context, id string, eval *budget.Evaluation) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE jobs SET budget_result = ? WHERE id = ?", marshalNullable(eval), id)
+	return err
 }
 
 // RecoverInterruptedJobs fails any jobs left RUNNING or PENDING by a previous

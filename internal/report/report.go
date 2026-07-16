@@ -7,6 +7,7 @@ import (
 	"io"
 	"text/tabwriter"
 
+	"github.com/AdrianTJ/gospeedtest/internal/budget"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/browser"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/lighthouse"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
@@ -54,6 +55,23 @@ func WriteText(w io.Writer, summaries []Summary) {
 			fmt.Fprintf(tw, "%s\tlighthouse\tBest Practices\t%.2f\n", s.URL, s.Lighthouse.BestPractices)
 			fmt.Fprintf(tw, "%s\tlighthouse\tSEO\t%.2f\n", s.URL, s.Lighthouse.SEO)
 		}
+	}
+	tw.Flush()
+}
+
+// WriteBudgetText renders a budget evaluation as a human-readable table.
+// A nil Actual (metric never collected) renders as "-".
+func WriteBudgetText(w io.Writer, eval *budget.Evaluation) {
+	fmt.Fprintf(w, "\nBudget: %s\n", eval.Status)
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "METRIC\tOP\tTHRESHOLD\tACTUAL\tLEVEL\tSTATUS")
+	fmt.Fprintln(tw, "------\t--\t---------\t------\t-----\t------")
+	for _, a := range eval.Assertions {
+		actual := "-"
+		if a.Actual != nil {
+			actual = fmt.Sprintf("%.2f", *a.Actual)
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%.2f\t%s\t%s\t%s\n", a.Metric, a.Op, a.Threshold, actual, a.Level, a.Status)
 	}
 	tw.Flush()
 }
