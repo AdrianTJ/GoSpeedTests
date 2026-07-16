@@ -246,7 +246,11 @@ func (m *Manager) worker(id int) {
 					if r := recover(); r != nil {
 						slog.Error("Worker panicked while processing job", "worker_id", id, "job_id", job.ID, "recover", r)
 						errStr := fmt.Sprintf("internal worker panic: %v", r)
-						m.store.UpdateJobStatus(m.ctx, job.ID, store.StatusFailed, &errStr)
+						if err := m.store.UpdateJobStatus(m.ctx, job.ID, store.StatusFailed, &errStr); err != nil {
+							// Job may be left RUNNING in the store; recovery on
+							// next daemon start will fail it.
+							slog.Error("Failed to mark panicked job FAILED", "job_id", job.ID, "error", err)
+						}
 					}
 				}()
 				m.processJob(job)
@@ -586,7 +590,7 @@ func (m *Manager) sendOneWebhook(client *http.Client, d store.WebhookDelivery) {
 	if success {
 		slog.Info("Webhook delivered", "job_id", d.JobID, "delivery_id", d.ID, "attempts", d.Attempts)
 		m.metrics.CounterInc("gost_webhook_deliveries_total", "result", "success")
-		m.store.UpdateWebhookStatus(m.ctx, d.ID, "SUCCESS", d.Attempts, d.LastAttempt, nil)
+		m.setWebhookStatus(d, "SUCCESS", nil)
 		return
 	}
 
@@ -594,7 +598,7 @@ func (m *Manager) sendOneWebhook(client *http.Client, d store.WebhookDelivery) {
 	if d.Attempts >= maxWebhookRetries {
 		slog.Error("Webhook failed permanently", "job_id", d.JobID, "delivery_id", d.ID, "attempts", d.Attempts, "error", err)
 		m.metrics.CounterInc("gost_webhook_deliveries_total", "result", "failed")
-		m.store.UpdateWebhookStatus(m.ctx, d.ID, "FAILED", d.Attempts, d.LastAttempt, nil)
+		m.setWebhookStatus(d, "FAILED", nil)
 		return
 	}
 	m.metrics.CounterInc("gost_webhook_deliveries_total", "result", "retry")
@@ -604,5 +608,15 @@ func (m *Manager) sendOneWebhook(client *http.Client, d store.WebhookDelivery) {
 	nextAttempt := now.Add(backoff)
 
 	slog.Warn("Webhook failed, scheduling retry", "job_id", d.JobID, "delivery_id", d.ID, "attempts", d.Attempts, "next_attempt", nextAttempt, "error", err)
-	m.store.UpdateWebhookStatus(m.ctx, d.ID, "PENDING", d.Attempts, d.LastAttempt, &nextAttempt)
+	m.setWebhookStatus(d, "PENDING", &nextAttempt)
+}
+
+// setWebhookStatus persists a delivery-state change, logging (rather than
+// dropping) a store failure — the periodic sweep re-reads state from the
+// store, so an unpersisted transition would otherwise be invisible.
+func (m *Manager) setWebhookStatus(d store.WebhookDelivery, status string, nextAttempt *time.Time) {
+	if err := m.store.UpdateWebhookStatus(m.ctx, d.ID, status, d.Attempts, d.LastAttempt, nextAttempt); err != nil {
+		slog.Error("Failed to persist webhook delivery status",
+			"delivery_id", d.ID, "status", status, "error", err)
+	}
 }

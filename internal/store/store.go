@@ -380,11 +380,12 @@ func (s *sqliteStore) GetJob(ctx context.Context, id string) (*Job, error) {
 func (s *sqliteStore) UpdateJobStatus(ctx context.Context, id string, status JobStatus, errStr *string) error {
 	now := time.Now()
 	var err error
-	if status == StatusRunning {
+	switch status {
+	case StatusRunning:
 		_, err = s.db.ExecContext(ctx, "UPDATE jobs SET status = ?, started_at = ? WHERE id = ?", status, now, id)
-	} else if status == StatusCompleted || status == StatusFailed || status == StatusTimeout || status == StatusPartial {
+	case StatusCompleted, StatusFailed, StatusTimeout, StatusPartial:
 		_, err = s.db.ExecContext(ctx, "UPDATE jobs SET status = ?, completed_at = ?, error = ? WHERE id = ?", status, now, errStr, id)
-	} else {
+	default:
 		_, err = s.db.ExecContext(ctx, "UPDATE jobs SET status = ? WHERE id = ?", status, id)
 	}
 	return err

@@ -1,0 +1,40 @@
+# golangci-lint v2 configuration.
+#
+# Policy: the default linter set (errcheck, govet, ineffassign, staticcheck,
+# unused) with a small, documented list of errcheck exclusions for idiomatic
+# fire-and-forget calls. Everything else must be handled or explicitly logged.
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      exclude-functions:
+        # Deferred/error-path closes: the useful error (if any) already
+        # surfaced from the read/write; Close failure is unactionable here.
+        - (io.Closer).Close
+        - (io.ReadCloser).Close
+        - (*os.File).Close
+        - (*database/sql.DB).Close
+        - (*database/sql.Rows).Close
+        - (github.com/AdrianTJ/gospeedtest/internal/store.Store).Close
+        # Rollback on an error path: the original error is what matters.
+        - (*database/sql.Tx).Rollback
+        # Writes to an http.ResponseWriter or terminal report output: a failed
+        # write means the client/pipe is gone; there is no one left to tell.
+        - (net/http.ResponseWriter).Write
+        - (*encoding/json.Encoder).Encode
+        - (*text/tabwriter.Writer).Flush
+        # csv.Writer buffers; errors are collected via cw.Error() after Flush,
+        # which WriteCSV already returns (the documented encoding/csv idiom).
+        - (*encoding/csv.Writer).Write
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+
+  exclusions:
+    rules:
+      # Test files: fixture setup uses fire-and-forget store calls on temp
+      # databases; a broken fixture fails the assertion that follows anyway.
+      - path: _test\.go
+        linters:
+          - errcheck

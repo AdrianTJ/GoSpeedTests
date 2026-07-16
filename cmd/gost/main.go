@@ -157,18 +157,24 @@ func main() {
 		cancel()
 		summaries = append(summaries, res)
 
-		// Persist if store is available
+		// Persist if store is available. Persistence failures must not abort
+		// the measurement run, but silence would let a bad -db path masquerade
+		// as saved data — warn on every failure.
 		if s != nil {
 			jobID := "cli_" + uuid.New().String()[:8]
-			s.CreateJob(context.Background(), &store.Job{
+			if err := s.CreateJob(context.Background(), &store.Job{
 				ID: jobID, URL: *urlPtr, Status: store.StatusCompleted,
 				Tiers: []string{tier}, Runs: 1, Budget: budg, Profile: prof.Name, CreatedAt: time.Now(),
-			})
-			s.SaveResult(context.Background(), &store.Result{
+			}); err != nil {
+				slog.Warn("Failed to persist job", "job_id", jobID, "error", err)
+			}
+			if err := s.SaveResult(context.Background(), &store.Result{
 				ID: "res_" + uuid.New().String()[:8], JobID: jobID, RunIndex: i,
 				Network: res.Network, Browser: res.Browser, Vitals: res.Vitals,
 				Lighthouse: res.Lighthouse, CollectedAt: time.Now(),
-			})
+			}); err != nil {
+				slog.Warn("Failed to persist result", "job_id", jobID, "error", err)
+			}
 			cliJobIDs = append(cliJobIDs, jobID)
 		}
 	}
@@ -176,19 +182,24 @@ func main() {
 	eval := evaluateBudget(budg, summaries)
 	if s != nil && eval != nil {
 		for _, id := range cliJobIDs {
-			s.SetJobBudgetResult(context.Background(), id, eval)
+			if err := s.SetJobBudgetResult(context.Background(), id, eval); err != nil {
+				slog.Warn("Failed to persist budget result", "job_id", id, "error", err)
+			}
 		}
 	}
 
+	// A report we couldn't write is a failed invocation (broken pipe, full
+	// disk) — the caller must not mistake missing output for success.
+	var writeErr error
 	switch *formatPtr {
 	case "json":
 		if eval != nil {
-			report.WriteJSON(os.Stdout, map[string]interface{}{"runs": summaries, "budget_result": eval})
+			writeErr = report.WriteJSON(os.Stdout, map[string]interface{}{"runs": summaries, "budget_result": eval})
 		} else {
-			report.WriteJSON(os.Stdout, summaries)
+			writeErr = report.WriteJSON(os.Stdout, summaries)
 		}
 	case "csv":
-		report.WriteCSV(os.Stdout, summaries)
+		writeErr = report.WriteCSV(os.Stdout, summaries)
 		if eval != nil {
 			report.WriteBudgetText(os.Stderr, eval)
 		}
@@ -197,6 +208,10 @@ func main() {
 		if eval != nil {
 			report.WriteBudgetText(os.Stdout, eval)
 		}
+	}
+	if writeErr != nil {
+		fmt.Fprintf(os.Stderr, "Error: writing report: %v\n", writeErr)
+		os.Exit(1)
 	}
 
 	// Signal failure to scripts only when every tier attempt failed; a partial

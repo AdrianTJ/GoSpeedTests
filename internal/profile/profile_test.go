@@ -1,6 +1,7 @@
 package profile
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -73,14 +74,15 @@ func TestConditionsArgs(t *testing.T) {
 	}
 }
 
-// TestApply_NoneIsNoOp ensures the none profile never touches the browser
-// (ctx is nil-safe because Apply must return before using it).
+// TestApply_NoneIsNoOp ensures the none profile never touches the browser:
+// the context carries no chromedp session, so any CDP attempt would error.
 func TestApply_NoneIsNoOp(t *testing.T) {
+	ctx := context.Background()
 	p, _ := Get("none")
-	if err := Apply(nil, p); err != nil { //nolint:staticcheck // nil ctx proves the no-op path
+	if err := Apply(ctx, p); err != nil {
 		t.Errorf("Apply(none) = %v, want nil", err)
 	}
-	if err := Apply(nil, Profile{}); err != nil {
+	if err := Apply(ctx, Profile{}); err != nil {
 		t.Errorf("Apply(zero profile) = %v, want nil", err)
 	}
 }

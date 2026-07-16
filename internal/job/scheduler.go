@@ -66,7 +66,10 @@ func (m *Manager) runDueSchedules(now time.Time) {
 			slog.Warn("Scheduler skipping interval: previous job still active",
 				"schedule_id", sc.ID, "url", sc.URL, "active_jobs", active)
 			m.metrics.CounterInc("gost_scheduler_runs_total", "result", "skipped")
-			m.store.MarkScheduleRun(m.ctx, sc.ID, now, next)
+			if err := m.store.MarkScheduleRun(m.ctx, sc.ID, now, next); err != nil {
+				// The schedule stays due and will be retried next tick.
+				slog.Error("Scheduler failed to advance skipped schedule", "schedule_id", sc.ID, "error", err)
+			}
 			continue
 		}
 
