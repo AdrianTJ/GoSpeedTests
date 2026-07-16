@@ -85,7 +85,25 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /v1/jobs/{id}", s.authMiddleware(http.HandlerFunc(s.handleGetJob)))
 	mux.Handle("DELETE /v1/jobs/{id}", s.authMiddleware(http.HandlerFunc(s.handleDeleteJob)))
 
+	// Schedules (recurring monitors)
+	mux.Handle("POST /v1/schedules", s.authMiddleware(http.HandlerFunc(s.handleCreateSchedule)))
+	mux.Handle("GET /v1/schedules", s.authMiddleware(http.HandlerFunc(s.handleListSchedules)))
+	mux.Handle("GET /v1/schedules/{id}", s.authMiddleware(http.HandlerFunc(s.handleGetSchedule)))
+	mux.Handle("PATCH /v1/schedules/{id}", s.authMiddleware(http.HandlerFunc(s.handleUpdateSchedule)))
+	mux.Handle("DELETE /v1/schedules/{id}", s.authMiddleware(http.HandlerFunc(s.handleDeleteSchedule)))
+
+	// Prometheus metrics. Auth-protected: an open endpoint would leak the set
+	// of tested URLs. Prometheus scrape configs can send the X-API-Key header.
+	mux.Handle("GET /metrics", s.authMiddleware(http.HandlerFunc(s.handleMetrics)))
+
 	return mux
+}
+
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	if err := s.manager.Metrics().Write(w); err != nil {
+		slog.Error("Failed to write metrics", "error", err)
+	}
 }
 
 func (s *Server) handleOpenAPI(w http.ResponseWriter, r *http.Request) {

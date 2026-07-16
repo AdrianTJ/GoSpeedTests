@@ -69,6 +69,10 @@ func main() {
 	m := job.NewManager(s, cfg.Workers, cfg.QueueDepth, cfg.GoogleAPIKey)
 	m.SetDefaultTimeout(cfg.TimeoutS)
 	m.Start()
+	if cfg.SchedulerEnabled {
+		m.StartScheduler()
+	}
+	m.StartRetention(cfg.RetentionDays)
 
 	srv := api.NewServer(m, s, cfg.APIKey, cfg.AllowInsecure)
 	httpServer := &http.Server{Addr: cfg.ListenAddr, Handler: srv.Routes()}

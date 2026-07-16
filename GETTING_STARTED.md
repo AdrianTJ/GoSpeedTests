@@ -117,6 +117,26 @@ Curious how the URL has been trending? `GET /v1/history?url=https://example.com`
 returns per-metric `avg`/`p50`/`p75`/`p95` — the `p75` numbers are what Google
 uses to score Core Web Vitals.
 
+### Continuous Monitoring (Schedules)
+
+Instead of poking the API yourself, let the daemon re-test on a cadence:
+
+```bash
+curl -X POST http://localhost:8080/v1/schedules \
+     -H "Content-Type: application/json" \
+     -d '{"url": "https://example.com", "tiers": ["network"], "interval_seconds": 300}'
+```
+
+That's a test every 5 minutes (minimum interval: 60s), starting within ~15
+seconds. Each run is a normal job — it shows up in `/v1/jobs` with a
+`schedule_id`, feeds `/v1/history`, and honors any `budget`/`webhook_url` you
+set on the schedule. Pause with
+`PATCH /v1/schedules/{id}` + `{"enabled": false}`; delete keeps the history.
+
+Two things to set when monitoring 24/7:
+- `GOST_RETENTION_DAYS=90` — trim old results so the database doesn't grow forever (default keeps everything).
+- Point Prometheus at `GET /metrics` (send the `X-API-Key` header) for dashboards and alerting.
+
 ---
 
 ## 6. How it Works (Under the Hood)

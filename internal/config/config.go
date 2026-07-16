@@ -20,16 +20,22 @@ type Config struct {
 	GoogleAPIKey  string `yaml:"google_api_key"`
 	LogLevel      string `yaml:"log_level"`
 	AllowInsecure bool   `yaml:"allow_insecure"`
+	// RetentionDays is how long completed jobs are kept; 0 keeps them
+	// forever (deletion is opt-in — an upgrade must never silently drop data).
+	RetentionDays int `yaml:"retention_days"`
+	// SchedulerEnabled toggles the recurring-monitor loop (default true).
+	SchedulerEnabled bool `yaml:"scheduler_enabled"`
 }
 
 // Default values
 func Default() *Config {
 	return &Config{
-		ListenAddr: ":8080",
-		Workers:    4,
-		QueueDepth: 256,
-		TimeoutS:   60,
-		LogLevel:   "info",
+		ListenAddr:       ":8080",
+		Workers:          4,
+		QueueDepth:       256,
+		TimeoutS:         60,
+		LogLevel:         "info",
+		SchedulerEnabled: true,
 	}
 }
 
@@ -78,6 +84,15 @@ func Load(filePath string) (*Config, error) {
 	if val := os.Getenv("GOST_ALLOW_INSECURE"); val == "true" {
 		cfg.AllowInsecure = true
 	}
+	if val := os.Getenv("GOST_RETENTION_DAYS"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil {
+			cfg.RetentionDays = n
+		}
+	}
+	// Default is true, so only an explicit "false" disables the scheduler.
+	if val := os.Getenv("GOST_SCHEDULER_ENABLED"); val == "false" {
+		cfg.SchedulerEnabled = false
+	}
 
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -98,6 +113,9 @@ func (c *Config) Validate() error {
 	}
 	if c.TimeoutS < 1 {
 		return fmt.Errorf("timeout_s must be >= 1 (got %d)", c.TimeoutS)
+	}
+	if c.RetentionDays < 0 {
+		return fmt.Errorf("retention_days must be >= 0 (got %d; 0 keeps data forever)", c.RetentionDays)
 	}
 	return nil
 }
