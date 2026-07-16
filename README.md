@@ -118,6 +118,56 @@ CLI exit codes:
 verdict appears as `budget_result` on `GET /v1/jobs/{id}` and in the webhook
 payload.
 
+## ⏱️ Scheduled Monitoring
+
+Schedules turn one-off tests into continuous monitoring: the daemon re-tests a
+URL every `interval_seconds` (minimum 60) and stores the time series.
+
+```bash
+curl -H "X-API-Key: $KEY" -X POST http://localhost:8080/v1/schedules \
+  -d '{"url": "https://example.com", "tiers": ["network"], "interval_seconds": 300,
+       "budget": {"assertions": {"network.ttfb_ms": {"max": 500}}}}'
+```
+
+- The first run fires on the next scheduler tick (~15s); after that, every interval.
+- Schedules can carry a `budget` and a `webhook_url` — every scheduled run is
+  budget-checked and webhook-notified like a manual job.
+- If the previous scheduled job is still running when the next interval
+  arrives, that interval is **skipped** (no pileup); the skip is counted in
+  `gost_scheduler_runs_total{result="skipped"}`.
+- Manage with `GET/PATCH/DELETE /v1/schedules[/{id}]` (PATCH toggles
+  `{"enabled": bool}`). Deleting a schedule keeps its historical jobs.
+- Disable the whole loop with `GOST_SCHEDULER_ENABLED=false`.
+
+## 📊 Prometheus Metrics
+
+`GET /metrics` exposes Prometheus text-format metrics: jobs by status, job
+duration histogram, queue depth, webhook delivery results, scheduler
+decisions, retention purges, and latest per-URL values (scheduled URLs only,
+so label cardinality stays bounded). The endpoint requires the API key —
+point Prometheus at it with a custom header:
+
+```yaml
+scrape_configs:
+  - job_name: gost
+    metrics_path: /metrics
+    static_configs: [{ targets: ["gost-host:8080"] }]
+    http_headers:
+      X-API-Key:
+        values: ["your-secret-key"]
+```
+
+Dashboards and alerting stay in your existing Grafana/Alertmanager — GoSpeedTest
+deliberately exports metrics instead of shipping its own dashboard UI.
+
+## 🗑 Data Retention
+
+`GOST_RETENTION_DAYS=90` purges completed jobs (with their results and webhook
+deliveries) older than 90 days, hourly. The default is `0` — **keep
+everything** — so enabling deletion is always an explicit choice. Running and
+pending jobs are never purged. If you run schedules 24/7, set a retention
+window so the SQLite file doesn't grow unbounded.
+
 ## 📈 History & Percentiles
 
 `GET /v1/history?url=...` reports per-metric statistics over the recorded runs
@@ -152,6 +202,8 @@ GoSpeedTest follows a strict configuration hierarchy: **Flags > Environment Vari
 | `GOST_WORKERS` | `4` | Number of concurrent workers (must be ≥ 1) |
 | `GOST_QUEUE_DEPTH` | `256` | Job queue buffer size (must be ≥ 1) |
 | `GOST_TIMEOUT_S` | `60` | Default per-run timeout in seconds; a request's `timeout_s` overrides it |
+| `GOST_RETENTION_DAYS` | `0` | Purge completed jobs older than N days (0 = keep forever) |
+| `GOST_SCHEDULER_ENABLED` | `true` | Set `false` to disable the recurring-monitor loop |
 | `GOST_ALLOW_PRIVATE_IPS` | `false` | Allow tests/webhooks to target private/loopback IPs (local testing only) |
 | `GOST_CHROME_NO_SANDBOX` | `false` | Disable the Chrome sandbox (only in trusted, isolated environments that can't support it) |
 

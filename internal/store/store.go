@@ -41,6 +41,7 @@ type Job struct {
 	WebhookURL   string             `json:"webhook_url,omitempty"`
 	Budget       *budget.Budget     `json:"budget,omitempty"`
 	BudgetResult *budget.Evaluation `json:"budget_result,omitempty"`
+	ScheduleID   string             `json:"schedule_id,omitempty"`
 	Error        *string            `json:"error,omitempty"`
 	CreatedAt    time.Time          `json:"created_at"`
 	StartedAt    *time.Time         `json:"started_at,omitempty"`
@@ -82,6 +83,22 @@ type History struct {
 	Metrics    map[string]MetricStats `json:"metrics"`
 }
 
+// Schedule describes a recurring monitor: a job template submitted every
+// IntervalSeconds while Enabled.
+type Schedule struct {
+	ID              string         `json:"id"`
+	URL             string         `json:"url"`
+	Tiers           []string       `json:"tiers"`
+	Runs            int            `json:"runs"`
+	IntervalSeconds int            `json:"interval_seconds"`
+	Budget          *budget.Budget `json:"budget,omitempty"`
+	WebhookURL      string         `json:"webhook_url,omitempty"`
+	Enabled         bool           `json:"enabled"`
+	CreatedAt       time.Time      `json:"created_at"`
+	LastRunAt       *time.Time     `json:"last_run_at,omitempty"`
+	NextRunAt       *time.Time     `json:"next_run_at,omitempty"`
+}
+
 // WebhookDelivery tracks the state of a webhook notification.
 type WebhookDelivery struct {
 	ID          string     `json:"id"`
@@ -107,6 +124,19 @@ type Store interface {
 	SetJobBudgetResult(ctx context.Context, id string, eval *budget.Evaluation) error
 	DeleteJob(ctx context.Context, id string) error
 	RecoverInterruptedJobs(ctx context.Context) (int, error)
+
+	// Schedules
+	CreateSchedule(ctx context.Context, sc *Schedule) error
+	GetSchedule(ctx context.Context, id string) (*Schedule, error)
+	ListSchedules(ctx context.Context) ([]Schedule, error)
+	DeleteSchedule(ctx context.Context, id string) error
+	SetScheduleEnabled(ctx context.Context, id string, enabled bool) error
+	GetDueSchedules(ctx context.Context, now time.Time, limit int) ([]Schedule, error)
+	MarkScheduleRun(ctx context.Context, id string, lastRun, nextRun time.Time) error
+	CountActiveJobsForSchedule(ctx context.Context, scheduleID string) (int, error)
+
+	// Retention
+	PurgeOldJobs(ctx context.Context, olderThan time.Time) (int, error)
 
 	// Webhooks
 	EnqueueWebhook(ctx context.Context, delivery *WebhookDelivery) error
@@ -202,6 +232,31 @@ func (s *sqliteStore) initSchema() error {
 			ALTER TABLE jobs ADD COLUMN budget_result TEXT;
 			`,
 		},
+		{
+			// Scheduled monitoring. No FK from jobs.schedule_id to schedules:
+			// deleting a schedule keeps its historical jobs (same rationale as
+			// webhook_deliveries). idx_jobs_completed_at serves retention purges.
+			Version: 6,
+			SQL: `
+			CREATE TABLE IF NOT EXISTS schedules (
+				id               TEXT     PRIMARY KEY,
+				url              TEXT     NOT NULL,
+				tiers            TEXT     NOT NULL,
+				runs             INTEGER  NOT NULL DEFAULT 1,
+				interval_seconds INTEGER  NOT NULL,
+				budget           TEXT,
+				webhook_url      TEXT,
+				enabled          INTEGER  NOT NULL DEFAULT 1,
+				created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				last_run_at      DATETIME,
+				next_run_at      DATETIME
+			);
+			CREATE INDEX IF NOT EXISTS idx_schedules_due ON schedules(enabled, next_run_at);
+			ALTER TABLE jobs ADD COLUMN schedule_id TEXT;
+			CREATE INDEX IF NOT EXISTS idx_jobs_schedule ON jobs(schedule_id);
+			CREATE INDEX IF NOT EXISTS idx_jobs_completed_at ON jobs(completed_at);
+			`,
+		},
 	}
 
 	return migrations.Run(context.Background(), s.db, m)
@@ -213,9 +268,9 @@ func (s *sqliteStore) CreateJob(ctx context.Context, job *Job) error {
 	budgetJSON := marshalNullable(job.Budget)
 
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO jobs (id, url, status, tiers, runs, timeout_s, tags, webhook_url, budget, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		job.ID, job.URL, job.Status, string(tiersJSON), job.Runs, job.TimeoutS, string(tagsJSON), job.WebhookURL, budgetJSON, job.CreatedAt)
+		`INSERT INTO jobs (id, url, status, tiers, runs, timeout_s, tags, webhook_url, budget, schedule_id, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		job.ID, job.URL, job.Status, string(tiersJSON), job.Runs, job.TimeoutS, string(tagsJSON), job.WebhookURL, budgetJSON, job.ScheduleID, job.CreatedAt)
 	return err
 }
 
@@ -231,7 +286,7 @@ func marshalNullable(v any) any {
 
 // jobColumns is the canonical SELECT column list for a jobs row, kept in sync
 // with scanJob's Scan order.
-const jobColumns = "id, url, status, tiers, runs, timeout_s, tags, webhook_url, budget, budget_result, error, created_at, started_at, completed_at"
+const jobColumns = "id, url, status, tiers, runs, timeout_s, tags, webhook_url, budget, budget_result, schedule_id, error, created_at, started_at, completed_at"
 
 // rowScanner is satisfied by both *sql.Row and *sql.Rows.
 type rowScanner interface {
@@ -243,16 +298,17 @@ func scanJob(sc rowScanner) (Job, error) {
 	var job Job
 	// webhook_url is NullString too: rows written before migration v2 added
 	// the column carry SQL NULL, not the empty string.
-	var tiersJSON, tagsJSON, webhookURL, budgetJSON, budgetResultJSON sql.NullString
+	var tiersJSON, tagsJSON, webhookURL, budgetJSON, budgetResultJSON, scheduleID sql.NullString
 	var startedAt, completedAt sql.NullTime
 
 	if err := sc.Scan(
 		&job.ID, &job.URL, &job.Status, &tiersJSON, &job.Runs, &job.TimeoutS, &tagsJSON, &webhookURL,
-		&budgetJSON, &budgetResultJSON, &job.Error,
+		&budgetJSON, &budgetResultJSON, &scheduleID, &job.Error,
 		&job.CreatedAt, &startedAt, &completedAt); err != nil {
 		return job, err
 	}
 	job.WebhookURL = webhookURL.String
+	job.ScheduleID = scheduleID.String
 
 	if tiersJSON.Valid {
 		_ = json.Unmarshal([]byte(tiersJSON.String), &job.Tiers)

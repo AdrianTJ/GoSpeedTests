@@ -18,6 +18,7 @@ import (
 	"github.com/AdrianTJ/gospeedtest/internal/collector/lighthouse"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
 	"github.com/AdrianTJ/gospeedtest/internal/collector/vitals"
+	"github.com/AdrianTJ/gospeedtest/internal/metrics"
 	"github.com/AdrianTJ/gospeedtest/internal/store"
 	"github.com/AdrianTJ/gospeedtest/internal/validator"
 	"github.com/google/uuid"
@@ -46,6 +47,7 @@ type Manager struct {
 	cancel          context.CancelFunc
 	mu              sync.Mutex
 	pendingJobs     map[string]struct{}
+	metrics         *metrics.Registry
 }
 
 // NewManager creates a new job manager. Chrome is started lazily on the first
@@ -53,7 +55,7 @@ type Manager struct {
 // a browser (and the manager is constructible in tests without Chrome).
 func NewManager(s store.Store, workerCount int, queueDepth int, googleAPIKey string) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Manager{
+	m := &Manager{
 		store:           s,
 		jobQueue:        make(chan *store.Job, queueDepth),
 		webhookChan:     make(chan string, webhookChanBuffer),
@@ -63,7 +65,22 @@ func NewManager(s store.Store, workerCount int, queueDepth int, googleAPIKey str
 		ctx:             ctx,
 		cancel:          cancel,
 		pendingJobs:     make(map[string]struct{}),
+		metrics:         metrics.NewRegistry(),
 	}
+	m.metrics.Help("gost_jobs_total", "Jobs processed, by final status.")
+	m.metrics.Help("gost_job_duration_seconds", "Wall-clock job processing time.")
+	m.metrics.Help("gost_queue_depth", "Jobs currently buffered in the queue.")
+	m.metrics.Help("gost_webhook_deliveries_total", "Webhook delivery attempts, by result.")
+	m.metrics.Help("gost_scheduler_runs_total", "Scheduler decisions, by result.")
+	m.metrics.Help("gost_retention_purged_total", "Rows removed by retention, by kind.")
+	m.metrics.Help("gost_last_metric_ms", "Latest metric values for scheduled URLs.")
+	m.metrics.GaugeFunc("gost_queue_depth", func() float64 { return float64(len(m.jobQueue)) })
+	return m
+}
+
+// Metrics exposes the manager's registry for the /metrics endpoint.
+func (m *Manager) Metrics() *metrics.Registry {
+	return m.metrics
 }
 
 // browserManager lazily starts the shared headless Chrome on first use.
@@ -113,6 +130,7 @@ type SubmitOptions struct {
 	TimeoutS   int
 	WebhookURL string
 	Budget     *budget.Budget
+	ScheduleID string
 }
 
 // Submit enqueues a new job for execution using the manager's default timeout.
@@ -144,6 +162,7 @@ func (m *Manager) SubmitJob(ctx context.Context, opts SubmitOptions) (*store.Job
 		TimeoutS:   timeoutS,
 		WebhookURL: opts.WebhookURL,
 		Budget:     opts.Budget,
+		ScheduleID: opts.ScheduleID,
 		CreatedAt:  time.Now(),
 	}
 
@@ -235,6 +254,7 @@ func (m *Manager) worker(id int) {
 
 func (m *Manager) processJob(job *store.Job) {
 	slog.Info("Worker processing job", "job_id", job.ID, "url", job.URL)
+	jobStart := time.Now()
 
 	// Update status to RUNNING
 	if err := m.store.UpdateJobStatus(m.ctx, job.ID, store.StatusRunning, nil); err != nil {
@@ -269,6 +289,7 @@ func (m *Manager) processJob(job *store.Job) {
 	failedTiers := map[string]bool{}
 	var lastErr error
 	var runMetrics []map[string]float64 // per-run flattened metrics for budget evaluation
+	var lastMetrics map[string]float64  // most recent run's metrics, for the /metrics gauges
 	for i := 1; i <= job.Runs; i++ {
 		resultRecord := &store.Result{
 			ID:          "res_" + uuid.New().String()[:8],
@@ -361,9 +382,9 @@ func (m *Manager) processJob(job *store.Job) {
 			slog.Error("Failed to save result", "job_id", job.ID, "run_index", i, "error", err)
 		}
 
+		lastMetrics = budget.Flatten(resultRecord.Network, resultRecord.Browser, resultRecord.Vitals, resultRecord.Lighthouse)
 		if job.Budget != nil {
-			runMetrics = append(runMetrics,
-				budget.Flatten(resultRecord.Network, resultRecord.Browser, resultRecord.Vitals, resultRecord.Lighthouse))
+			runMetrics = append(runMetrics, lastMetrics)
 		}
 	}
 
@@ -371,6 +392,23 @@ func (m *Manager) processJob(job *store.Job) {
 
 	if err := m.store.UpdateJobStatus(m.ctx, job.ID, status, errStr); err != nil {
 		slog.Error("Failed to update job status", "job_id", job.ID, "status", status, "error", err)
+	}
+
+	m.metrics.CounterInc("gost_jobs_total", "status", string(status))
+	m.metrics.Observe("gost_job_duration_seconds", time.Since(jobStart).Seconds())
+	// Latest-value gauges only for scheduled jobs: schedules are user-curated,
+	// so the url label cardinality stays bounded.
+	if job.ScheduleID != "" && lastMetrics != nil {
+		for _, g := range []struct{ key, name string }{
+			{"network.ttfb_ms", "ttfb"},
+			{"network.total_ms", "total"},
+			{"browser.page_load_ms", "page_load"},
+			{"vitals.lcp_ms", "lcp"},
+		} {
+			if v, ok := lastMetrics[g.key]; ok {
+				m.metrics.GaugeSet("gost_last_metric_ms", v, "url", job.URL, "metric", g.name)
+			}
+		}
 	}
 
 	// Budgets are judged on the median across runs so a single noisy run does
@@ -531,6 +569,7 @@ func (m *Manager) sendOneWebhook(client *http.Client, d store.WebhookDelivery) {
 
 	if success {
 		slog.Info("Webhook delivered", "job_id", d.JobID, "delivery_id", d.ID, "attempts", d.Attempts)
+		m.metrics.CounterInc("gost_webhook_deliveries_total", "result", "success")
 		m.store.UpdateWebhookStatus(m.ctx, d.ID, "SUCCESS", d.Attempts, d.LastAttempt, nil)
 		return
 	}
@@ -538,9 +577,11 @@ func (m *Manager) sendOneWebhook(client *http.Client, d store.WebhookDelivery) {
 	// Handle failure
 	if d.Attempts >= maxWebhookRetries {
 		slog.Error("Webhook failed permanently", "job_id", d.JobID, "delivery_id", d.ID, "attempts", d.Attempts, "error", err)
+		m.metrics.CounterInc("gost_webhook_deliveries_total", "result", "failed")
 		m.store.UpdateWebhookStatus(m.ctx, d.ID, "FAILED", d.Attempts, d.LastAttempt, nil)
 		return
 	}
+	m.metrics.CounterInc("gost_webhook_deliveries_total", "result", "retry")
 
 	// Calculate exponential backoff (e.g., 2, 4, 8, 16, 32 seconds)
 	backoff := time.Duration(math.Pow(2, float64(d.Attempts))) * time.Second

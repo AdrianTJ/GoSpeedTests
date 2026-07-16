@@ -135,6 +135,43 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/MetricStats'
 
+    Schedule:
+      type: object
+      properties:
+        id: { type: string }
+        url: { type: string }
+        tiers:
+          type: array
+          items: { type: string }
+        runs: { type: integer }
+        interval_seconds: { type: integer, minimum: 60 }
+        budget:
+          $ref: '#/components/schemas/Budget'
+        webhook_url: { type: string }
+        enabled: { type: boolean }
+        created_at: { type: string, format: date-time }
+        last_run_at: { type: string, format: date-time }
+        next_run_at: { type: string, format: date-time }
+
+    CreateScheduleRequest:
+      type: object
+      required: [url, interval_seconds]
+      properties:
+        url: { type: string }
+        tiers:
+          type: array
+          items:
+            type: string
+            enum: [network, browser, vitals, lighthouse, all]
+        runs: { type: integer, default: 1, maximum: 10 }
+        interval_seconds:
+          type: integer
+          minimum: 60
+          description: How often to run the test. The first run fires on the next scheduler tick (~15s).
+        budget:
+          $ref: '#/components/schemas/Budget'
+        webhook_url: { type: string }
+
     CreateJobRequest:
       type: object
       required:
@@ -272,6 +309,123 @@ paths:
       responses:
         '204':
           description: Job deleted (its results and webhook deliveries are removed too)
+
+  /v1/schedules:
+    post:
+      summary: Create a recurring monitor
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateScheduleRequest'
+      responses:
+        '201':
+          description: Schedule created (enabled, first run on the next tick)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Schedule'
+        '400':
+          description: Invalid request (bad URL/tier/budget, interval_seconds < 60, or runs > 10)
+        '401':
+          description: Unauthorized
+
+    get:
+      summary: List schedules
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: All schedules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Schedule'
+
+  /v1/schedules/{id}:
+    get:
+      summary: Get a schedule
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Schedule details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Schedule'
+        '404':
+          description: Schedule not found
+
+    patch:
+      summary: Enable or disable a schedule
+      description: The only mutable field is `enabled`; delete and recreate for anything else.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+      responses:
+        '200':
+          description: Updated schedule
+        '400':
+          description: Body was not {"enabled" true|false}
+        '404':
+          description: Schedule not found
+
+    delete:
+      summary: Delete a schedule (historical jobs are kept)
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Schedule deleted
+        '404':
+          description: Schedule not found
+
+  /metrics:
+    get:
+      summary: Prometheus metrics (text exposition format)
+      description: >
+        Requires the API key — configure your Prometheus scrape job to send the
+        X-API-Key header. Exposes gost_jobs_total, gost_job_duration_seconds,
+        gost_queue_depth, gost_webhook_deliveries_total, gost_scheduler_runs_total,
+        gost_retention_purged_total, and gost_last_metric_ms (scheduled URLs only).
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Metrics in Prometheus text format
+          content:
+            text/plain: {}
+        '401':
+          description: Unauthorized
 
   /v1/history:
     get:
