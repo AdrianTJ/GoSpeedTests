@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/AdrianTJ/gospeedtest/docs"
 	"github.com/AdrianTJ/gospeedtest/internal/budget"
 	"github.com/AdrianTJ/gospeedtest/internal/job"
 	"github.com/AdrianTJ/gospeedtest/internal/profile"
@@ -124,7 +125,10 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleOpenAPI(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "docs/openapi.yaml")
+	// Served from the embedded copy so /docs works regardless of the
+	// daemon's working directory.
+	w.Header().Set("Content-Type", "application/yaml")
+	w.Write(docs.OpenAPISpec)
 }
 
 func (s *Server) handleDocs(w http.ResponseWriter, r *http.Request) {

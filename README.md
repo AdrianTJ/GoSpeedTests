@@ -81,10 +81,14 @@ A budget file (`budget.yaml` — JSON works too, same schema as the API's inline
 
 ```yaml
 assertions:
-  network.ttfb_ms:        { max: 500 }              # level defaults to error
-  vitals.lcp_ms:          { max: 2500, level: warn } # warn: reported, doesn't fail
-  lighthouse.performance: { min: 0.9 }
+  network.ttfb_ms: { max: 500 }              # level defaults to error
+  vitals.lcp_ms:   { max: 2500, level: warn } # warn: reported, doesn't fail
 ```
+
+Only assert on metrics from tiers you actually run: a metric that is never
+collected trips its assertion (see below), so adding e.g.
+`lighthouse.performance: { min: 0.9 }` fails the budget unless the lighthouse
+tier runs successfully (it needs a Google API key).
 
 Supported metric keys: `network.ttfb_ms`, `network.total_ms`,
 `network.dns_lookup_ms`, `network.tls_handshake_ms`, `network.response_bytes`,

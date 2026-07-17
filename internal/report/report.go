@@ -33,7 +33,14 @@ func WriteText(w io.Writer, summaries []Summary) {
 	fmt.Fprintln(tw, "URL\tTIER\tMETRIC\tVALUE")
 	fmt.Fprintln(tw, "---\t----\t------\t-----")
 
-	for _, s := range summaries {
+	for i, s := range summaries {
+		// Separate runs so multi-run output doesn't read as one long list.
+		if len(summaries) > 1 {
+			if i > 0 {
+				fmt.Fprintln(tw, "\t\t\t")
+			}
+			fmt.Fprintf(tw, "[run %d/%d]\t\t\t\n", i+1, len(summaries))
+		}
 		if s.Network != nil {
 			fmt.Fprintf(tw, "%s\tnetwork\tDNS Lookup\t%.2fms\n", s.URL, s.Network.DNSLookupMS)
 			fmt.Fprintf(tw, "%s\tnetwork\tTCP Connect\t%.2fms\n", s.URL, s.Network.TCPConnectMS)
