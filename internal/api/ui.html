@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GoSpeedTest</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1a202c; --muted: #64748b;
+    --border: #e2e8f0; --accent: #2563eb;
+    --ok: #16a34a; --ok-bg: #dcfce7;
+    --warn: #b45309; --warn-bg: #fef3c7;
+    --fail: #dc2626; --fail-bg: #fee2e2;
+    --neutral: #475569; --neutral-bg: #e2e8f0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 14px 24px; background: var(--card); border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 17px; margin: 0; }
+  header h1 span { color: var(--accent); }
+  header .spacer { flex: 1; }
+  header input {
+    font: inherit; padding: 6px 10px; border: 1px solid var(--border);
+    border-radius: 6px; width: 220px;
+  }
+  header .links a { color: var(--muted); text-decoration: none; margin-left: 12px; font-size: 13px; }
+  header .links a:hover { color: var(--accent); }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 24px 60px; }
+  section { margin-top: 26px; }
+  section h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--muted); margin: 0 0 10px;
+  }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 14px; border-top: 1px solid var(--border); white-space: nowrap; }
+  thead th { border-top: 0; color: var(--muted); font-weight: 600; font-size: 12px; }
+  td.url { max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+  td.num { font-variant-numeric: tabular-nums; }
+  .chip {
+    display: inline-block; padding: 1px 9px; border-radius: 999px;
+    font-size: 12px; font-weight: 600;
+  }
+  .chip.completed, .chip.pass, .chip.on { color: var(--ok); background: var(--ok-bg); }
+  .chip.partial, .chip.warn { color: var(--warn); background: var(--warn-bg); }
+  .chip.failed, .chip.fail { color: var(--fail); background: var(--fail-bg); }
+  .chip.pending, .chip.running, .chip.off, .chip.none { color: var(--neutral); background: var(--neutral-bg); }
+  .empty { padding: 18px 14px; color: var(--muted); }
+  #banner {
+    display: none; margin-top: 16px; padding: 10px 14px; border-radius: 8px;
+    background: var(--fail-bg); color: var(--fail); font-weight: 500;
+  }
+  .lookup { display: flex; gap: 8px; margin-bottom: 10px; }
+  .lookup input {
+    flex: 1; font: inherit; padding: 7px 10px;
+    border: 1px solid var(--border); border-radius: 6px;
+  }
+  .lookup button {
+    font: inherit; padding: 7px 16px; border: 0; border-radius: 6px;
+    background: var(--accent); color: #fff; cursor: pointer;
+  }
+  footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Go<span>SpeedTest</span></h1>
+  <div class="spacer"></div>
+  <input id="apikey" type="password" placeholder="X-API-Key (if required)" autocomplete="off">
+  <nav class="links"><a href="/docs">API docs</a><a href="/metrics">metrics</a></nav>
+</header>
+<main>
+  <div id="banner"></div>
+
+  <section>
+    <h2>Recent jobs</h2>
+    <div class="card"><table id="jobs">
+      <thead><tr><th>ID</th><th>URL</th><th>Tiers</th><th>Profile</th><th>Status</th><th>Budget</th><th>Created</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Schedules</h2>
+    <div class="card"><table id="schedules">
+      <thead><tr><th>ID</th><th>URL</th><th>Tiers</th><th>Every</th><th>Enabled</th><th>Last run</th><th>Next run</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>URL statistics (lab history + RUM field data)</h2>
+    <div class="lookup">
+      <input id="statsurl" type="text" placeholder="https://example.com/ — or click a URL above">
+      <button id="statsgo">Look&nbsp;up</button>
+    </div>
+    <div class="card"><table id="stats">
+      <thead><tr><th>Source</th><th>Metric</th><th>Count</th><th>Avg</th><th>p50</th><th>p75</th><th>p95</th></tr></thead>
+      <tbody><tr><td colspan="7" class="empty">Enter a URL to see lab percentiles and any real-user (RUM) data.</td></tr></tbody>
+    </table></div>
+  </section>
+
+  <footer>
+    Read-only status page. Jobs and schedules refresh every 10s. Use the
+    <a href="/docs">API</a> or <code>gost</code> CLI to create jobs; dashboards
+    and alerting belong in Grafana via <a href="/metrics">/metrics</a>.
+  </footer>
+</main>
+<script>
+"use strict";
+const $ = (sel) => document.querySelector(sel);
+const keyInput = $("#apikey");
+keyInput.value = localStorage.getItem("gost_api_key") || "";
+keyInput.addEventListener("change", () => {
+  localStorage.setItem("gost_api_key", keyInput.value);
+  refresh();
+});
+
+async function api(path) {
+  const headers = {};
+  if (keyInput.value) headers["X-API-Key"] = keyInput.value;
+  const resp = await fetch(path, { headers });
+  if (resp.status === 401) throw new Error("unauthorized — enter your API key (top right)");
+  if (!resp.ok) throw new Error(`${path}: HTTP ${resp.status}`);
+  return resp.json();
+}
+
+function banner(msg) {
+  const el = $("#banner");
+  el.style.display = msg ? "block" : "none";
+  el.textContent = msg || "";
+}
+
+function chip(text, cls) {
+  const span = document.createElement("span");
+  span.className = "chip " + cls;
+  span.textContent = text;
+  return span;
+}
+
+function cell(tr, content, cls) {
+  const td = document.createElement("td");
+  if (cls) td.className = cls;
+  if (content instanceof Node) td.appendChild(content);
+  else td.textContent = content == null ? "—" : content;
+  tr.appendChild(td);
+  return td;
+}
+
+function urlCell(tr, url) {
+  const td = cell(tr, "", "url");
+  const a = document.createElement("a");
+  a.href = "#";
+  a.textContent = url;
+  a.title = url;
+  a.addEventListener("click", (e) => { e.preventDefault(); $("#statsurl").value = url; loadStats(); });
+  td.appendChild(a);
+}
+
+function ago(iso) {
+  if (!iso) return "—";
+  const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+  if (!isFinite(s)) return "—";
+  if (Math.abs(s) < 60) return s >= 0 ? `${s}s ago` : `in ${-s}s`;
+  const m = Math.round(s / 60);
+  if (Math.abs(m) < 60) return m >= 0 ? `${m}m ago` : `in ${-m}m`;
+  const h = Math.round(m / 60);
+  return h >= 0 ? `${h}h ago` : `in ${-h}h`;
+}
+
+function fillEmpty(tbody, cols, msg) {
+  tbody.replaceChildren();
+  const tr = document.createElement("tr");
+  const td = document.createElement("td");
+  td.colSpan = cols; td.className = "empty"; td.textContent = msg;
+  tr.appendChild(td);
+  tbody.appendChild(tr);
+}
+
+async function loadJobs() {
+  const jobs = await api("/v1/jobs");
+  const tbody = $("#jobs tbody");
+  if (!jobs || !jobs.length) return fillEmpty(tbody, 7, "No jobs yet — submit one: POST /v1/jobs or run gost.");
+  tbody.replaceChildren();
+  for (const j of jobs.slice(0, 15)) {
+    const tr = document.createElement("tr");
+    cell(tr, j.id);
+    urlCell(tr, j.url);
+    cell(tr, (j.tiers || []).join(", "));
+    cell(tr, j.profile || "none");
+    cell(tr, chip(j.status, j.status.toLowerCase()));
+    cell(tr, j.budget_result ? chip(j.budget_result.status, j.budget_result.status) : "—");
+    cell(tr, ago(j.created_at));
+    tbody.appendChild(tr);
+  }
+}
+
+async function loadSchedules() {
+  const schedules = await api("/v1/schedules");
+  const tbody = $("#schedules tbody");
+  if (!schedules || !schedules.length) return fillEmpty(tbody, 7, "No schedules — create one: POST /v1/schedules.");
+  tbody.replaceChildren();
+  for (const s of schedules) {
+    const tr = document.createElement("tr");
+    cell(tr, s.id);
+    urlCell(tr, s.url);
+    cell(tr, (s.tiers || []).join(", "));
+    cell(tr, s.interval_seconds + "s", "num");
+    cell(tr, chip(s.enabled ? "on" : "off", s.enabled ? "on" : "off"));
+    cell(tr, ago(s.last_run_at));
+    cell(tr, ago(s.next_run_at));
+    tbody.appendChild(tr);
+  }
+}
+
+function statRows(tbody, source, metrics, fmt) {
+  for (const name of Object.keys(metrics).sort()) {
+    const m = metrics[name];
+    const tr = document.createElement("tr");
+    cell(tr, source);
+    cell(tr, name);
+    cell(tr, m.count, "num");
+    cell(tr, fmt(name, m.avg), "num");
+    cell(tr, fmt(name, m.p50), "num");
+    cell(tr, fmt(name, m.p75), "num");
+    cell(tr, fmt(name, m.p95), "num");
+    tbody.appendChild(tr);
+  }
+}
+
+async function loadStats() {
+  const url = $("#statsurl").value.trim();
+  if (!url) return;
+  const tbody = $("#stats tbody");
+  fillEmpty(tbody, 7, "Loading…");
+  // CLS is a unitless score; everything else is ms or a plain count/score.
+  const fmt = (name, v) => name.endsWith(".cls") || name === "CLS"
+    ? v.toFixed(3)
+    : Math.round(v * 100) / 100;
+  try {
+    const enc = encodeURIComponent(url);
+    const [history, rum] = await Promise.all([
+      api("/v1/history?url=" + enc),
+      api("/v1/rum/summary?url=" + enc).catch(() => null), // absent when RUM is off
+    ]);
+    tbody.replaceChildren();
+    if (history && history.metrics && Object.keys(history.metrics).length) {
+      statRows(tbody, "lab", history.metrics, fmt);
+    }
+    if (rum && rum.metrics && Object.keys(rum.metrics).length) {
+      statRows(tbody, "field (RUM)", rum.metrics, fmt);
+    }
+    if (!tbody.children.length) {
+      fillEmpty(tbody, 7, "No recorded data for that URL yet.");
+    }
+  } catch (err) {
+    fillEmpty(tbody, 7, String(err.message || err));
+  }
+}
+$("#statsgo").addEventListener("click", loadStats);
+$("#statsurl").addEventListener("keydown", (e) => { if (e.key === "Enter") loadStats(); });
+
+async function refresh() {
+  try {
+    await Promise.all([loadJobs(), loadSchedules()]);
+    banner(null);
+  } catch (err) {
+    banner(String(err.message || err));
+  }
+}
+refresh();
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>

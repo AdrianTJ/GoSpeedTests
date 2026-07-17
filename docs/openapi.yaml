@@ -560,3 +560,16 @@ paths:
           description: Missing url or invalid window_h
         '401':
           description: Unauthorized
+
+  /:
+    get:
+      summary: Status page
+      description: >
+        Embedded read-only status UI (recent jobs, schedules, per-URL lab and
+        RUM statistics). Public — the HTML contains no data; the page calls the
+        authenticated JSON endpoints with the API key the visitor provides.
+      responses:
+        '200':
+          description: HTML status page
+          content:
+            text/html: {}

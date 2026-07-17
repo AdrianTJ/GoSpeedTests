@@ -85,6 +85,7 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
 	// Public routes
+	mux.HandleFunc("GET /{$}", s.handleUI) // status page; exact "/" only
 	mux.HandleFunc("GET /v1/health", s.handleHealth)
 	mux.HandleFunc("GET /v1/ready", s.handleReady)
 	mux.HandleFunc("GET /openapi.yaml", s.handleOpenAPI)

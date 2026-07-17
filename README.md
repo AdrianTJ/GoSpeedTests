@@ -122,6 +122,19 @@ CLI exit codes:
 verdict appears as `budget_result` on `GET /v1/jobs/{id}` and in the webhook
 payload.
 
+## 🖥 Status Page
+
+The daemon serves a read-only status page at `/` (e.g. `http://localhost:8080/`):
+recent jobs with budget verdicts, schedules, and per-URL lab + RUM statistics.
+Enter your API key once (top right); it is kept in your browser's localStorage
+and sent with every request — the page itself contains no data.
+
+By design the page is one embedded HTML file with no build step and **no write
+operations** — jobs and schedules are created via the API or CLI. Trend
+dashboards and alerting deliberately stay in Grafana/Alertmanager via
+[`/metrics`](#-prometheus-metrics); this page exists for the quick
+"is it running, did the budget pass" check.
+
 ## 🐢 Throttling Profiles
 
 Unthrottled headless Chrome on a fast server measures your server, not your
