@@ -1,4 +1,4 @@
-module github.com/AdrianTJ/gospeedtest
+module github.com/AdrianTJ/loadstar
 
 go 1.26.2
 

@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AdrianTJ/gospeedtest/internal/collector/browser"
-	"github.com/AdrianTJ/gospeedtest/internal/collector/lighthouse"
-	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
-	"github.com/AdrianTJ/gospeedtest/internal/collector/vitals"
+	"github.com/AdrianTJ/loadstar/internal/collector/browser"
+	"github.com/AdrianTJ/loadstar/internal/collector/lighthouse"
+	"github.com/AdrianTJ/loadstar/internal/collector/network"
+	"github.com/AdrianTJ/loadstar/internal/collector/vitals"
 )
 
 func fullSummary() Summary {

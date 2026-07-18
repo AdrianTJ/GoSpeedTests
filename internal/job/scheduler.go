@@ -44,7 +44,7 @@ func (m *Manager) schedulerLoop() {
 // next_run_at always advances — even when the tick is skipped or the submit
 // fails — so a schedule can never hot-loop on every tick; the worst case is
 // one dropped datapoint per interval, which is visible in the
-// gost_scheduler_runs_total{result="skipped"|"error"} counters.
+// loadstar_scheduler_runs_total{result="skipped"|"error"} counters.
 func (m *Manager) runDueSchedules(now time.Time) {
 	due, err := m.store.GetDueSchedules(m.ctx, now, schedulerBatchSize)
 	if err != nil {
@@ -65,7 +65,7 @@ func (m *Manager) runDueSchedules(now time.Time) {
 		if active > 0 {
 			slog.Warn("Scheduler skipping interval: previous job still active",
 				"schedule_id", sc.ID, "url", sc.URL, "active_jobs", active)
-			m.metrics.CounterInc("gost_scheduler_runs_total", "result", "skipped")
+			m.metrics.CounterInc("loadstar_scheduler_runs_total", "result", "skipped")
 			if err := m.store.MarkScheduleRun(m.ctx, sc.ID, now, next); err != nil {
 				// The schedule stays due and will be retried next tick.
 				slog.Error("Scheduler failed to advance skipped schedule", "schedule_id", sc.ID, "error", err)
@@ -84,9 +84,9 @@ func (m *Manager) runDueSchedules(now time.Time) {
 		})
 		if err != nil {
 			slog.Error("Scheduler failed to submit job", "schedule_id", sc.ID, "url", sc.URL, "error", err)
-			m.metrics.CounterInc("gost_scheduler_runs_total", "result", "error")
+			m.metrics.CounterInc("loadstar_scheduler_runs_total", "result", "error")
 		} else {
-			m.metrics.CounterInc("gost_scheduler_runs_total", "result", "submitted")
+			m.metrics.CounterInc("loadstar_scheduler_runs_total", "result", "submitted")
 		}
 		if err := m.store.MarkScheduleRun(m.ctx, sc.ID, now, next); err != nil {
 			slog.Error("Scheduler failed to advance schedule", "schedule_id", sc.ID, "error", err)

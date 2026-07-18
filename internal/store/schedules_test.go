@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AdrianTJ/gospeedtest/internal/budget"
-	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
+	"github.com/AdrianTJ/loadstar/internal/budget"
+	"github.com/AdrianTJ/loadstar/internal/collector/network"
 )
 
 func newScheduleTestStore(t *testing.T, name string) Store {

@@ -13,11 +13,11 @@ import (
 	"os"
 	"sort"
 
-	"github.com/AdrianTJ/gospeedtest/internal/collector/browser"
-	"github.com/AdrianTJ/gospeedtest/internal/collector/lighthouse"
-	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
-	"github.com/AdrianTJ/gospeedtest/internal/collector/vitals"
-	"github.com/AdrianTJ/gospeedtest/internal/stats"
+	"github.com/AdrianTJ/loadstar/internal/collector/browser"
+	"github.com/AdrianTJ/loadstar/internal/collector/lighthouse"
+	"github.com/AdrianTJ/loadstar/internal/collector/network"
+	"github.com/AdrianTJ/loadstar/internal/collector/vitals"
+	"github.com/AdrianTJ/loadstar/internal/stats"
 	"gopkg.in/yaml.v3"
 )
 

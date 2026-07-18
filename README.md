@@ -1,6 +1,6 @@
-# Go Speed Test
+# Loadstar ✦
 
-**GoSpeedTest** is a high-performance, open-source page speed analysis toolkit written in Go. It allows developers and SREs to measure, track, and compare web performance metrics across any URL without vendor lock-in.
+**Loadstar** is a high-performance, open-source page speed analysis toolkit written in Go. It allows developers and SREs to measure, track, and compare web performance metrics across any URL without vendor lock-in.
 
 ---
 
@@ -12,8 +12,8 @@
   - **Vitals:** Lab web vitals via injected PerformanceObservers: LCP, FCP, CLS (proper session windowing), and TBT (the standard lab proxy for INP — real INP needs real users; see Real User Monitoring below).
 - **Asynchronous Engine:** Robust job management with a configurable worker pool and state machine.
 - **Dual Interface:**
-  - **CLI (`gost`):** Optimized for ad-hoc testing, scripts, and local developer use.
-  - **API Daemon (`gostd`):** A RESTful API for CI/CD integration and automated monitoring.
+  - **CLI (`loadstar run`):** Optimized for ad-hoc testing, scripts, and local developer use.
+  - **API Daemon (`loadstar serve`):** A RESTful API for CI/CD integration and automated monitoring.
 - **Production Ready:**
   - **Embedded Persistence:** Zero-config SQLite backend with WAL mode for high concurrency.
   - **Security:** SSRF protection and API Key authentication.
@@ -30,8 +30,7 @@
 
 ### Build from Source
 ```bash
-go build -o gost ./cmd/gost
-go build -o gostd ./cmd/gostd
+go build -o loadstar ./cmd/loadstar
 ```
 
 ---
@@ -41,16 +40,16 @@ go build -o gostd ./cmd/gostd
 ### CLI Mode
 Perform a full performance analysis on a URL:
 ```bash
-./gost -u https://example.com -n 3 -f text
+./loadstar run -u https://example.com -n 3 -f text
 ```
 
 ### API Mode
 **1. Start the server (Requires API Key by default):**
 ```bash
-export GOST_API_KEY="your-secret-key"
-./gostd
+export LOADSTAR_API_KEY="your-secret-key"
+./loadstar serve
 ```
-*Note: To run without a key for local testing, use `./gostd -insecure`.*
+*Note: To run without a key for local testing, use `./loadstar serve -insecure`.*
 
 **2. Submit a test job:**
 ```bash
@@ -81,10 +80,14 @@ A budget file (`budget.yaml` — JSON works too, same schema as the API's inline
 
 ```yaml
 assertions:
-  network.ttfb_ms:        { max: 500 }              # level defaults to error
-  vitals.lcp_ms:          { max: 2500, level: warn } # warn: reported, doesn't fail
-  lighthouse.performance: { min: 0.9 }
+  network.ttfb_ms: { max: 500 }              # level defaults to error
+  vitals.lcp_ms:   { max: 2500, level: warn } # warn: reported, doesn't fail
 ```
+
+Only assert on metrics from tiers you actually run: a metric that is never
+collected trips its assertion (see below), so adding e.g.
+`lighthouse.performance: { min: 0.9 }` fails the budget unless the lighthouse
+tier runs successfully (it needs a Google API key).
 
 Supported metric keys: `network.ttfb_ms`, `network.total_ms`,
 `network.dns_lookup_ms`, `network.tls_handshake_ms`, `network.response_bytes`,
@@ -101,7 +104,7 @@ threshold".
 **CLI (CI gate):**
 
 ```bash
-./gost -u https://example.com -t network -budget budget.yaml
+./loadstar run -u https://example.com -t network -budget budget.yaml
 echo $?   # 3 if an error-level assertion failed
 ```
 
@@ -118,6 +121,19 @@ CLI exit codes:
 verdict appears as `budget_result` on `GET /v1/jobs/{id}` and in the webhook
 payload.
 
+## 🖥 Status Page
+
+The daemon serves a read-only status page at `/` (e.g. `http://localhost:8080/`):
+recent jobs with budget verdicts, schedules, and per-URL lab + RUM statistics.
+Enter your API key once (top right); it is kept in your browser's localStorage
+and sent with every request — the page itself contains no data.
+
+By design the page is one embedded HTML file with no build step and **no write
+operations** — jobs and schedules are created via the API or CLI. Trend
+dashboards and alerting deliberately stay in Grafana/Alertmanager via
+[`/metrics`](#-prometheus-metrics); this page exists for the quick
+"is it running, did the budget pass" check.
+
 ## 🐢 Throttling Profiles
 
 Unthrottled headless Chrome on a fast server measures your server, not your
@@ -132,7 +148,7 @@ browser-driven tiers under realistic conditions (Chrome DevTools presets):
 | `slow-3g` | 400ms | 400 Kbps | 400 Kbps | 4× |
 
 ```bash
-./gost -u https://example.com -t vitals -profile slow-3g
+./loadstar run -u https://example.com -t vitals -profile slow-3g
 ```
 
 Throttling applies to the **browser and vitals tiers only** — the network tier
@@ -143,13 +159,13 @@ stay comparable across profiles.
 
 Lab numbers and field reality differ — real users have slow devices, cold
 caches, and real interactions (which is also why INP can only come from the
-field). GoSpeedTest can ingest real-user beacons and aggregate them with the
+field). Loadstar can ingest real-user beacons and aggregate them with the
 same p75 statistics as lab history.
 
 **1. Enable the endpoint** (off by default — it's a public write endpoint):
 
 ```bash
-export GOST_RUM_ORIGINS="https://www.your-site.example"   # or "*"
+export LOADSTAR_RUM_ORIGINS="https://www.your-site.example"   # or "*"
 ```
 
 **2. Add the snippet to your pages** (uses Google's `web-vitals` library):
@@ -171,7 +187,7 @@ curl -H "X-API-Key: $KEY" 'http://localhost:8080/v1/rum/summary?url=https://www.
 ```
 
 Ingest guardrails: origin allow-list (CORS), 8 KB body cap, value bounds, a
-global rate limit, and the same `GOST_RETENTION_DAYS` TTL as job data. Note
+global rate limit, and the same `LOADSTAR_RETENTION_DAYS` TTL as job data. Note
 CORS stops browsers, not curl — treat RUM data as unauthenticated input;
 aggregates (p75 over many events) are robust to noise.
 
@@ -191,10 +207,10 @@ curl -H "X-API-Key: $KEY" -X POST http://localhost:8080/v1/schedules \
   budget-checked and webhook-notified like a manual job.
 - If the previous scheduled job is still running when the next interval
   arrives, that interval is **skipped** (no pileup); the skip is counted in
-  `gost_scheduler_runs_total{result="skipped"}`.
+  `loadstar_scheduler_runs_total{result="skipped"}`.
 - Manage with `GET/PATCH/DELETE /v1/schedules[/{id}]` (PATCH toggles
   `{"enabled": bool}`). Deleting a schedule keeps its historical jobs.
-- Disable the whole loop with `GOST_SCHEDULER_ENABLED=false`.
+- Disable the whole loop with `LOADSTAR_SCHEDULER_ENABLED=false`.
 
 ## 📊 Prometheus Metrics
 
@@ -206,20 +222,20 @@ point Prometheus at it with a custom header:
 
 ```yaml
 scrape_configs:
-  - job_name: gost
+  - job_name: loadstar
     metrics_path: /metrics
-    static_configs: [{ targets: ["gost-host:8080"] }]
+    static_configs: [{ targets: ["loadstar-host:8080"] }]
     http_headers:
       X-API-Key:
         values: ["your-secret-key"]
 ```
 
-Dashboards and alerting stay in your existing Grafana/Alertmanager — GoSpeedTest
+Dashboards and alerting stay in your existing Grafana/Alertmanager — Loadstar
 deliberately exports metrics instead of shipping its own dashboard UI.
 
 ## 🗑 Data Retention
 
-`GOST_RETENTION_DAYS=90` purges completed jobs (with their results and webhook
+`LOADSTAR_RETENTION_DAYS=90` purges completed jobs (with their results and webhook
 deliveries) older than 90 days, hourly. The default is `0` — **keep
 everything** — so enabling deletion is always an explicit choice. Running and
 pending jobs are never purged. If you run schedules 24/7, set a retention
@@ -249,24 +265,24 @@ compatibility.
 
 ## ⚙️ Configuration
 
-GoSpeedTest follows a strict configuration hierarchy: **Flags > Environment Variables > `config.yaml`**.
+Loadstar follows a strict configuration hierarchy: **Flags > Environment Variables > `config.yaml`**.
 
 | Env Variable | Default | Description |
 |---|---|---|
-| `GOST_LISTEN_ADDR` | `:8080` | API server address |
-| `DATABASE_URL` | `gospeedtest.db` | SQLite database path |
-| `GOST_API_KEY` | *(unset)* | API key for authentication |
-| `GOST_WORKERS` | `4` | Number of concurrent workers (must be ≥ 1) |
-| `GOST_QUEUE_DEPTH` | `256` | Job queue buffer size (must be ≥ 1) |
-| `GOST_TIMEOUT_S` | `60` | Default per-run timeout in seconds; a request's `timeout_s` overrides it |
-| `GOST_RETENTION_DAYS` | `0` | Purge completed jobs older than N days (0 = keep forever) |
-| `GOST_SCHEDULER_ENABLED` | `true` | Set `false` to disable the recurring-monitor loop |
-| `GOST_RUM_ORIGINS` | *(unset)* | Comma-separated Origin allow-list enabling the public `/v1/rum` beacon endpoint (`*` = any origin; unset = endpoint disabled) |
-| `GOST_ALLOW_PRIVATE_IPS` | `false` | Allow tests/webhooks to target private/loopback IPs (local testing only) |
-| `GOST_CHROME_NO_SANDBOX` | `false` | Disable the Chrome sandbox (only in trusted, isolated environments that can't support it) |
+| `LOADSTAR_LISTEN_ADDR` | `:8080` | API server address |
+| `DATABASE_URL` | `loadstar.db` | SQLite database path |
+| `LOADSTAR_API_KEY` | *(unset)* | API key for authentication |
+| `LOADSTAR_WORKERS` | `4` | Number of concurrent workers (must be ≥ 1) |
+| `LOADSTAR_QUEUE_DEPTH` | `256` | Job queue buffer size (must be ≥ 1) |
+| `LOADSTAR_TIMEOUT_S` | `60` | Default per-run timeout in seconds; a request's `timeout_s` overrides it |
+| `LOADSTAR_RETENTION_DAYS` | `0` | Purge completed jobs older than N days (0 = keep forever) |
+| `LOADSTAR_SCHEDULER_ENABLED` | `true` | Set `false` to disable the recurring-monitor loop |
+| `LOADSTAR_RUM_ORIGINS` | *(unset)* | Comma-separated Origin allow-list enabling the public `/v1/rum` beacon endpoint (`*` = any origin; unset = endpoint disabled) |
+| `LOADSTAR_ALLOW_PRIVATE_IPS` | `false` | Allow tests/webhooks to target private/loopback IPs (local testing only) |
+| `LOADSTAR_CHROME_NO_SANDBOX` | `false` | Disable the Chrome sandbox (only in trusted, isolated environments that can't support it) |
 
 The daemon validates its numeric configuration on startup and refuses to start
-with a clear error on invalid values (e.g. `GOST_WORKERS=0`, negative queue
+with a clear error on invalid values (e.g. `LOADSTAR_WORKERS=0`, negative queue
 depth) rather than hanging or panicking.
 
 ---

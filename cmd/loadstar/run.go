@@ -9,36 +9,38 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AdrianTJ/gospeedtest/internal/budget"
-	"github.com/AdrianTJ/gospeedtest/internal/chrome"
-	"github.com/AdrianTJ/gospeedtest/internal/collector/browser"
-	"github.com/AdrianTJ/gospeedtest/internal/collector/lighthouse"
-	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
-	"github.com/AdrianTJ/gospeedtest/internal/collector/vitals"
-	"github.com/AdrianTJ/gospeedtest/internal/config"
-	"github.com/AdrianTJ/gospeedtest/internal/profile"
-	"github.com/AdrianTJ/gospeedtest/internal/report"
-	"github.com/AdrianTJ/gospeedtest/internal/store"
-	"github.com/AdrianTJ/gospeedtest/internal/tier"
-	"github.com/AdrianTJ/gospeedtest/internal/validator"
+	"github.com/AdrianTJ/loadstar/internal/budget"
+	"github.com/AdrianTJ/loadstar/internal/chrome"
+	"github.com/AdrianTJ/loadstar/internal/collector/browser"
+	"github.com/AdrianTJ/loadstar/internal/collector/lighthouse"
+	"github.com/AdrianTJ/loadstar/internal/collector/network"
+	"github.com/AdrianTJ/loadstar/internal/collector/vitals"
+	"github.com/AdrianTJ/loadstar/internal/config"
+	"github.com/AdrianTJ/loadstar/internal/profile"
+	"github.com/AdrianTJ/loadstar/internal/report"
+	"github.com/AdrianTJ/loadstar/internal/store"
+	"github.com/AdrianTJ/loadstar/internal/tier"
+	"github.com/AdrianTJ/loadstar/internal/validator"
 	"github.com/google/uuid"
 )
 
-func main() {
-	urlPtr := flag.String("u", "", "URL to test (required)")
-	tierPtr := flag.String("t", "all", "Tier to run: network, browser, vitals, lighthouse, all")
-	runsPtr := flag.Int("n", 1, "Number of runs to perform")
-	formatPtr := flag.String("f", "text", "Output format: json, text, csv")
-	dbPtr := flag.String("db", "", "Optional SQLite path to persist results")
-	timeoutPtr := flag.Int("timeout", 60, "Timeout in seconds per run")
-	gkeyPtr := flag.String("gkey", os.Getenv("GOST_GOOGLE_API_KEY"), "Google API Key for Lighthouse (optional)")
-	budgetPtr := flag.String("budget", "", "Path to a budget file (YAML or JSON); exit code 3 on violation")
-	profilePtr := flag.String("profile", "none", "Throttling profile for browser/vitals tiers: none, 4g, fast-3g, slow-3g")
-	flag.Parse()
+// runCmd implements "loadstar run": a one-off measurement from the CLI.
+func runCmd(args []string) {
+	fs := flag.NewFlagSet("run", flag.ExitOnError)
+	urlPtr := fs.String("u", "", "URL to test (required)")
+	tierPtr := fs.String("t", "all", "Tier to run: network, browser, vitals, lighthouse, all")
+	runsPtr := fs.Int("n", 1, "Number of runs to perform")
+	formatPtr := fs.String("f", "text", "Output format: json, text, csv")
+	dbPtr := fs.String("db", "", "Optional SQLite path to persist results")
+	timeoutPtr := fs.Int("timeout", 60, "Timeout in seconds per run")
+	gkeyPtr := fs.String("gkey", os.Getenv("LOADSTAR_GOOGLE_API_KEY"), "Google API Key for Lighthouse (optional)")
+	budgetPtr := fs.String("budget", "", "Path to a budget file (YAML or JSON); exit code 3 on violation")
+	profilePtr := fs.String("profile", "none", "Throttling profile for browser/vitals tiers: none, 4g, fast-3g, slow-3g")
+	_ = fs.Parse(args) // ExitOnError: Parse exits on bad flags, never returns an error
 
 	if *urlPtr == "" {
-		fmt.Println("Usage: gost -u <url> [options]")
-		flag.PrintDefaults()
+		fmt.Println("Usage: loadstar run -u <url> [options]")
+		fs.PrintDefaults()
 		os.Exit(1)
 	}
 

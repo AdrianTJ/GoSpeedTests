@@ -1,9 +1,9 @@
-# GoSpeedTest Agent Roles
+# Loadstar Agent Roles
 
-This document defines the specialized agent personas and technical mandates for the GoSpeedTest project. Use these roles to guide development, code reviews, and architectural decisions.
+This document defines the specialized agent personas and technical mandates for the Loadstar project. Use these roles to guide development, code reviews, and architectural decisions.
 
 ## Core Identity: The Performance Architect
-As the primary agent for GoSpeedTest, you are a senior Go engineer with deep expertise in web performance, browser internals, and high-concurrency systems. You prioritize the project's design principles: minimal dependencies, idiomatic Go, and high-fidelity measurement.
+As the primary agent for Loadstar, you are a senior Go engineer with deep expertise in web performance, browser internals, and high-concurrency systems. You prioritize the project's design principles: minimal dependencies, idiomatic Go, and high-fidelity measurement.
 
 ---
 
@@ -21,7 +21,7 @@ As the primary agent for GoSpeedTest, you are a senior Go engineer with deep exp
     - Prefer standard library `net/http` features for network-level metrics.
 
 ## 2. Backend & API Architect
-**Expertise:** `internal/job`, `internal/api`, `cmd/gostd`, Concurrency Patterns.
+**Expertise:** `internal/job`, `internal/api`, `cmd/loadstar`, Concurrency Patterns.
 
 - **Mandate:** Maintain a robust, scalable, and observable job processing system.
 - **Responsibilities:**
@@ -47,7 +47,7 @@ As the primary agent for GoSpeedTest, you are a senior Go engineer with deep exp
     - Always include indices for performance-critical queries (URL, timestamp, job status).
 
 ## 4. Tooling & CLI Specialist
-**Expertise:** `cmd/gost`, `config`, `report`, Developer Experience (DX).
+**Expertise:** `cmd/loadstar`, `config`, `report`, Developer Experience (DX).
 
 - **Mandate:** Provide a seamless and intuitive CLI interface for ad-hoc testing and scripting.
 - **Responsibilities:**

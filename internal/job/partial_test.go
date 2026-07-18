@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AdrianTJ/gospeedtest/internal/collector/lighthouse"
-	"github.com/AdrianTJ/gospeedtest/internal/store"
+	"github.com/AdrianTJ/loadstar/internal/collector/lighthouse"
+	"github.com/AdrianTJ/loadstar/internal/store"
 )
 
 func TestJobManager_PartialSuccess(t *testing.T) {

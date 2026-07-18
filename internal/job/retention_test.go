@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AdrianTJ/gospeedtest/internal/store"
+	"github.com/AdrianTJ/loadstar/internal/store"
 )
 
 // completed_at is stamped by UpdateJobStatus with time.Now(), so these tests

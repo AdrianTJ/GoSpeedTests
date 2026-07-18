@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# GoSpeedTest dogfooding smoke suite — drives the built binaries end-to-end
+# Loadstar dogfooding smoke suite — drives the built binaries end-to-end
 # against a local fixture server and asserts real behavior (status codes,
 # payload fields, the SSRF guard, and the DELETE -> FK-cascade fix).
 #
@@ -42,22 +42,21 @@ hcode(){ curl -s -o /dev/null -w '%{http_code}' "$@"; }
 
 cleanup(){
   for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null; done
-  pkill -x gostd 2>/dev/null; pkill -x dffixture 2>/dev/null; pkill -x dfwhook 2>/dev/null
+  pkill -x loadstar 2>/dev/null; pkill -x dffixture 2>/dev/null; pkill -x dfwhook 2>/dev/null
   [ "$WITH_CHROME" = 1 ] && { pkill -x chrome 2>/dev/null; pkill -x headless_shell 2>/dev/null; }
   rm -rf "$WORK" "$PROBE_DIR"
 }
 trap cleanup EXIT
 
 echo "== build =="
-go build -o bin/gost ./cmd/gost   || { echo "build gost failed";  exit 2; }
-go build -o bin/gostd ./cmd/gostd || { echo "build gostd failed"; exit 2; }
+go build -o bin/loadstar ./cmd/loadstar || { echo "build loadstar failed"; exit 2; }
 
 if [ "$WITH_CHROME" = 1 ]; then
   for c in /opt/pw-browsers/chromium-*/chrome-linux/chrome; do
     [ -x "$c" ] && ln -sf "$c" /usr/local/bin/google-chrome && break
   done
   command -v google-chrome >/dev/null || { echo "google-chrome not found; drop --with-chrome"; exit 2; }
-  export GOST_CHROME_NO_SANDBOX=true   # needed when running as root in CI
+  export LOADSTAR_CHROME_NO_SANDBOX=true   # needed when running as root in CI
 fi
 
 echo "== fixtures =="
@@ -130,13 +129,13 @@ GO
 probe(){ go run "$PROBE_DIR" "$1" "$2" 2>/dev/null; }
 
 start_daemon(){ # $1=port $2=dbpath $3=key $4=guard(on|off)
-  local envp="GOST_API_KEY=$3 GOST_LISTEN_ADDR=127.0.0.1:$1 DATABASE_URL=$2"
-  # -u GOST_ALLOW_PRIVATE_IPS: this script exports it for the CLI tests, so a
+  local envp="LOADSTAR_API_KEY=$3 LOADSTAR_LISTEN_ADDR=127.0.0.1:$1 DATABASE_URL=$2"
+  # -u LOADSTAR_ALLOW_PRIVATE_IPS: this script exports it for the CLI tests, so a
   # guard-ON daemon must explicitly drop it (env adds to the environment).
   if [ "$4" = off ]; then
-    env $envp GOST_ALLOW_PRIVATE_IPS=true bin/gostd >"$WORK/d$1.log" 2>&1 & PIDS+=($!)
+    env $envp LOADSTAR_ALLOW_PRIVATE_IPS=true bin/loadstar serve >"$WORK/d$1.log" 2>&1 & PIDS+=($!)
   else
-    env -u GOST_ALLOW_PRIVATE_IPS $envp bin/gostd >"$WORK/d$1.log" 2>&1 & PIDS+=($!)
+    env -u LOADSTAR_ALLOW_PRIVATE_IPS $envp bin/loadstar serve >"$WORK/d$1.log" 2>&1 & PIDS+=($!)
   fi
   for i in $(seq 1 40); do curl -sf "http://127.0.0.1:$1/v1/health" >/dev/null 2>&1 && return 0; sleep 0.25; done
   echo "daemon on $1 did not become healthy"; return 1
@@ -152,19 +151,19 @@ poll(){ # $1=port $2=key $3=jobid -> prints terminal status
 }
 
 echo "== CLI (network) =="
-export GOST_ALLOW_PRIVATE_IPS=true
-out=$(bin/gost -u http://127.0.0.1:$FIX/page -t network -f json 2>/dev/null)
+export LOADSTAR_ALLOW_PRIVATE_IPS=true
+out=$(bin/loadstar run -u http://127.0.0.1:$FIX/page -t network -f json 2>/dev/null)
 assert_has "CLI network json has status_code 200" '"status_code": 200' "$out"
 assert_has "CLI network json has response_bytes" '"response_bytes"' "$out"
-blk=$(env -u GOST_ALLOW_PRIVATE_IPS bin/gost -u http://127.0.0.1:$FIX/page -t network 2>&1)
+blk=$(env -u LOADSTAR_ALLOW_PRIVATE_IPS bin/loadstar run -u http://127.0.0.1:$FIX/page -t network 2>&1)
 assert_has "CLI SSRF guard blocks loopback" "private or restricted IP" "$blk"
 
 if [ "$WITH_CHROME" = 1 ]; then
   echo "== CLI (browser/vitals) =="
-  b=$(bin/gost -u http://127.0.0.1:$FIX/page -t browser -f json 2>/dev/null)
+  b=$(bin/loadstar run -u http://127.0.0.1:$FIX/page -t browser -f json 2>/dev/null)
   assert_has "CLI browser has page_load_ms" '"page_load_ms"' "$b"
   assert_has "CLI browser has waterfall" '"waterfall"' "$b"
-  v=$(bin/gost -u http://127.0.0.1:$FIX/page -t vitals -f json 2>/dev/null)
+  v=$(bin/loadstar run -u http://127.0.0.1:$FIX/page -t vitals -f json 2>/dev/null)
   assert_has "CLI vitals has fcp_ms" '"fcp_ms"' "$v"
 fi
 

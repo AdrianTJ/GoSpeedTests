@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AdrianTJ/gospeedtest/internal/store"
+	"github.com/AdrianTJ/loadstar/internal/store"
 )
 
 func newSchedulerFixture(t *testing.T, name string) (*Manager, store.Store) {
@@ -42,7 +42,7 @@ func mkSchedule(t *testing.T, s store.Store, id string, nextRun time.Time, url s
 // ticker) and verifies a due schedule spawns a job tagged with its ID and
 // next_run_at moves forward.
 func TestRunDueSchedules_SubmitsAndAdvances(t *testing.T) {
-	t.Setenv("GOST_ALLOW_PRIVATE_IPS", "true")
+	t.Setenv("LOADSTAR_ALLOW_PRIVATE_IPS", "true")
 	m, s := newSchedulerFixture(t, "sched-submit")
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -128,7 +128,7 @@ func TestRunDueSchedules_SkipsWhenActive(t *testing.T) {
 // TestRunDueSchedules_QueueFullAdvances pins that a failed submission (queue
 // full) still advances the schedule rather than retrying every tick.
 func TestRunDueSchedules_QueueFullAdvances(t *testing.T) {
-	t.Setenv("GOST_ALLOW_PRIVATE_IPS", "true")
+	t.Setenv("LOADSTAR_ALLOW_PRIVATE_IPS", "true")
 	tmpDir, _ := os.MkdirTemp("", "sched-full")
 	t.Cleanup(func() { os.RemoveAll(tmpDir) })
 	s, _ := store.NewStore(filepath.Join(tmpDir, "test.db"))

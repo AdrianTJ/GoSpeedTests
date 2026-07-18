@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/AdrianTJ/gospeedtest/internal/budget"
-	"github.com/AdrianTJ/gospeedtest/internal/collector/browser"
-	"github.com/AdrianTJ/gospeedtest/internal/collector/lighthouse"
-	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
-	"github.com/AdrianTJ/gospeedtest/internal/collector/vitals"
-	"github.com/AdrianTJ/gospeedtest/internal/stats"
-	"github.com/AdrianTJ/gospeedtest/internal/store/migrations"
+	"github.com/AdrianTJ/loadstar/internal/budget"
+	"github.com/AdrianTJ/loadstar/internal/collector/browser"
+	"github.com/AdrianTJ/loadstar/internal/collector/lighthouse"
+	"github.com/AdrianTJ/loadstar/internal/collector/network"
+	"github.com/AdrianTJ/loadstar/internal/collector/vitals"
+	"github.com/AdrianTJ/loadstar/internal/stats"
+	"github.com/AdrianTJ/loadstar/internal/store/migrations"
 	_ "github.com/mattn/go-sqlite3"
 )
 

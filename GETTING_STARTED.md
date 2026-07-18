@@ -1,12 +1,12 @@
-# Getting Started with GoSpeedTest
+# Getting Started with Loadstar
 
-Welcome! This guide is designed to take you from a curious visitor to a GoSpeedTest power user. Whether you're a developer wanting to track your site's performance or a friend of the author looking to see what this project is all about, you're in the right place.
+Welcome! This guide is designed to take you from a curious visitor to a Loadstar power user. Whether you're a developer wanting to track your site's performance or a friend of the author looking to see what this project is all about, you're in the right place.
 
 ---
 
-## 1. What is GoSpeedTest?
+## 1. What is Loadstar?
 
-At its core, GoSpeedTest is a **performance measurement engine**. Instead of relying on a single number to tell you if a site is "fast," it breaks down page speed into four distinct layers (Tiers):
+At its core, Loadstar is a **performance measurement engine**. Instead of relying on a single number to tell you if a site is "fast," it breaks down page speed into four distinct layers (Tiers):
 
 1.  **Network Tier:** The "low-level" stuff. How long does it take to find the server (DNS), connect to it (TCP/TLS), and get the very first byte of data (TTFB)?
 2.  **Browser Tier:** The "experience" stuff. How long until the page is actually usable? It loads the page in a real Chrome browser and tracks every single image, script, and CSS file requested (the Waterfall).
@@ -20,7 +20,7 @@ At its core, GoSpeedTest is a **performance measurement engine**. Instead of rel
 Before you start, you'll need three things on your machine:
 
 1.  **Go (1.21+):** The programming language used to build this. [Download it here](https://go.dev/dl/).
-2.  **Chrome or Chromium:** GoSpeedTest needs a real browser to run its tests. If you have Chrome installed, you're good!
+2.  **Chrome or Chromium:** Loadstar needs a real browser to run its tests. If you have Chrome installed, you're good!
 3.  **A Terminal:** You'll be typing commands into your terminal (Command Prompt on Windows, Terminal on macOS/Linux).
 
 ---
@@ -30,48 +30,44 @@ Before you start, you'll need three things on your machine:
 First, clone the project and enter the directory:
 
 ```bash
-git clone https://github.com/AdrianTJ/gospeedtest.git
-cd gospeedtest
+git clone https://github.com/AdrianTJ/loadstar.git
+cd loadstar
 ```
 
-Now, build the two main programs:
+Now, build the binary (one binary covers both the CLI and the daemon):
 
 ```bash
-# Build the CLI (for quick tests)
-go build -o gost ./cmd/gost
-
-# Build the Daemon (for background monitoring/API)
-go build -o gostd ./cmd/gostd
+go build -o loadstar ./cmd/loadstar
 ```
 
 ---
 
-## 4. Mode 1: The CLI (`gost`)
+## 4. Mode 1: The CLI (`loadstar run`)
 
 Use this when you want to run a quick test right now.
 
 ### Basic Run
 ```bash
-./gost -u https://google.com
+./loadstar run -u https://google.com
 ```
 
 ### Advanced CLI Usage
 *   **Multiple Runs:** Web performance is variable. Run it 5 times to get a better average:
     ```bash
-    ./gost -u https://google.com -n 5
+    ./loadstar run -u https://google.com -n 5
     ```
 *   **Save to a Database:** Want to keep your results for later?
     ```bash
-    ./gost -u https://google.com -db my_results.db
+    ./loadstar run -u https://google.com -db my_results.db
     ```
 *   **Specific Tiers:** Only care about Lighthouse scores?
     ```bash
-    ./gost -u https://google.com -t lighthouse
+    ./loadstar run -u https://google.com -t lighthouse
     ```
 *   **Realistic Conditions:** By default the browser tiers run unthrottled on
     your (fast) machine. Simulate a mid-range phone on mobile data:
     ```bash
-    ./gost -u https://google.com -t vitals -profile slow-3g
+    ./loadstar run -u https://google.com -t vitals -profile slow-3g
     # profiles: none (default), 4g, fast-3g, slow-3g — browser/vitals tiers only
     ```
 *   **Performance Budget (CI gate):** Fail the build when the page gets slow.
@@ -83,13 +79,13 @@ Use this when you want to run a quick test right now.
     ```
     Then:
     ```bash
-    ./gost -u https://google.com -t all -budget budget.yaml
+    ./loadstar run -u https://google.com -t all -budget budget.yaml
     # exit code 3 = an error-level assertion failed; warn-level trips exit 0
     ```
 
 ---
 
-## 5. Mode 2: The Daemon (`gostd`)
+## 5. Mode 2: The Daemon (`loadstar serve`)
 
 Use this if you want to build your own dashboard or integrate performance tests into a CI/CD pipeline. The daemon runs in the background and provides a REST API.
 
@@ -97,7 +93,7 @@ Use this if you want to build your own dashboard or integrate performance tests 
 For security, the server requires an API Key. For local testing, you can bypass this:
 
 ```bash
-./gostd -insecure
+./loadstar serve -insecure
 ```
 
 ### Using the API
@@ -126,7 +122,7 @@ Curious how the URL has been trending? `GET /v1/history?url=https://example.com`
 returns per-metric `avg`/`p50`/`p75`/`p95` — the `p75` numbers are what Google
 uses to score Core Web Vitals.
 
-Want *field* data too? Set `GOST_RUM_ORIGINS`, drop the snippet from the
+Want *field* data too? Set `LOADSTAR_RUM_ORIGINS`, drop the snippet from the
 README's "Real User Monitoring" section on your pages, and real visitors'
 LCP/CLS/INP/FCP/TTFB will flow into `GET /v1/rum/summary?url=...` — including
 INP, which lab tests fundamentally can't measure.
@@ -148,7 +144,7 @@ set on the schedule. Pause with
 `PATCH /v1/schedules/{id}` + `{"enabled": false}`; delete keeps the history.
 
 Two things to set when monitoring 24/7:
-- `GOST_RETENTION_DAYS=90` — trim old results so the database doesn't grow forever (default keeps everything).
+- `LOADSTAR_RETENTION_DAYS=90` — trim old results so the database doesn't grow forever (default keeps everything).
 - Point Prometheus at `GET /metrics` (send the `X-API-Key` header) for dashboards and alerting.
 
 ---
@@ -157,7 +153,7 @@ Two things to set when monitoring 24/7:
 
 If you're curious about the architecture:
 
-*   **The Store (SQLite):** Every job and result is stored in a local file called `gospeedtest.db`. We use SQLite because it's fast, requires zero setup, and is incredibly reliable.
+*   **The Store (SQLite):** Every job and result is stored in a local file called `loadstar.db`. We use SQLite because it's fast, requires zero setup, and is incredibly reliable.
 *   **The Worker Pool:** When you submit a job, it goes into a queue. A set of "Workers" (default: 4) pick up these jobs one by one. This prevents your computer from crashing if you submit 100 tests at once.
 *   **Browser Reuse:** To save time and memory, we share the browser process between tests while keeping the data (cookies/cache) separate for each run.
 
@@ -170,23 +166,23 @@ To get the most out of the **Lighthouse** tier, you should get a Google API Key 
 1.  Get a key from the [Google Cloud Console](https://developers.google.com/speed/docs/insights/v5/get-started).
 2.  Set it in your environment:
     ```bash
-    export GOST_GOOGLE_API_KEY="your-key-here"
+    export LOADSTAR_GOOGLE_API_KEY="your-key-here"
     ```
 3.  Run a test:
     ```bash
-    ./gost -u https://example.com -t lighthouse
+    ./loadstar run -u https://example.com -t lighthouse
     ```
 
 ---
 
 ## 8. Troubleshooting
 
-*   **"Chrome not found":** Ensure Chrome is installed in a standard location. GoSpeedTest looks for `google-chrome`, `chrome`, or `chromium`.
+*   **"Chrome not found":** Ensure Chrome is installed in a standard location. Loadstar looks for `google-chrome`, `chrome`, or `chromium`.
 *   **"Port 8080 already in use":** Another program is using that port. You can change it:
     ```bash
-    ./gostd -addr :9090
+    ./loadstar serve -addr :9090
     ```
-*   **SSRF Errors:** For safety, GoSpeedTest blocks tests against `localhost` or internal IP addresses.
+*   **SSRF Errors:** For safety, Loadstar blocks tests against `localhost` or internal IP addresses.
 
 ---
 
