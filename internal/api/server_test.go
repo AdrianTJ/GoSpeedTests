@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AdrianTJ/gospeedtest/internal/job"
-	"github.com/AdrianTJ/gospeedtest/internal/store"
+	"github.com/AdrianTJ/loadstar/internal/job"
+	"github.com/AdrianTJ/loadstar/internal/store"
 )
 
 func TestAPIServer(t *testing.T) {

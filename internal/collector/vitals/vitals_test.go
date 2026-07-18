@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AdrianTJ/gospeedtest/internal/chrome"
+	"github.com/AdrianTJ/loadstar/internal/chrome"
 )
 
 func TestVitalsCollector_Functional(t *testing.T) {

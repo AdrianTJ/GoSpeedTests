@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
-	"github.com/AdrianTJ/gospeedtest/internal/job"
-	"github.com/AdrianTJ/gospeedtest/internal/store"
+	"github.com/AdrianTJ/loadstar/internal/collector/network"
+	"github.com/AdrianTJ/loadstar/internal/job"
+	"github.com/AdrianTJ/loadstar/internal/store"
 )
 
 func newBudgetTestServer(t *testing.T, name string) (http.Handler, store.Store) {
@@ -53,7 +53,7 @@ func TestCreateJob_InvalidBudgetRejected(t *testing.T) {
 }
 
 func TestCreateJob_WithBudgetAcceptedAndEvaluated(t *testing.T) {
-	t.Setenv("GOST_ALLOW_PRIVATE_IPS", "true") // target is a loopback httptest server
+	t.Setenv("LOADSTAR_ALLOW_PRIVATE_IPS", "true") // target is a loopback httptest server
 	mux, _ := newBudgetTestServer(t, "api-good-budget")
 
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

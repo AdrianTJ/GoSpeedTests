@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/AdrianTJ/gospeedtest/internal/budget"
-	"github.com/AdrianTJ/gospeedtest/internal/job"
-	"github.com/AdrianTJ/gospeedtest/internal/profile"
-	"github.com/AdrianTJ/gospeedtest/internal/store"
-	"github.com/AdrianTJ/gospeedtest/internal/validator"
+	"github.com/AdrianTJ/loadstar/internal/budget"
+	"github.com/AdrianTJ/loadstar/internal/job"
+	"github.com/AdrianTJ/loadstar/internal/profile"
+	"github.com/AdrianTJ/loadstar/internal/store"
+	"github.com/AdrianTJ/loadstar/internal/validator"
 	"github.com/google/uuid"
 )
 

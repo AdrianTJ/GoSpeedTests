@@ -32,8 +32,8 @@ func NewManager() *Manager {
 	// tier) cannot escape to the host. Only disable it deliberately, in an
 	// already-isolated environment that cannot support the sandbox (e.g. a
 	// container without the setuid helper or user namespaces).
-	if os.Getenv("GOST_CHROME_NO_SANDBOX") == "true" {
-		slog.Warn("Chrome sandbox DISABLED via GOST_CHROME_NO_SANDBOX; a browser exploit could escape to the host. Only use this in a trusted, network-isolated deployment.")
+	if os.Getenv("LOADSTAR_CHROME_NO_SANDBOX") == "true" {
+		slog.Warn("Chrome sandbox DISABLED via LOADSTAR_CHROME_NO_SANDBOX; a browser exploit could escape to the host. Only use this in a trusted, network-isolated deployment.")
 		opts = append(opts, chromedp.NoSandbox)
 	} else if os.Geteuid() == 0 {
 		// chromedp auto-appends --no-sandbox when running as root (Chrome

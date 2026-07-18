@@ -73,46 +73,46 @@ func Load(filePath string) (*Config, error) {
 	}
 
 	// 2. Override with environment variables
-	if val := os.Getenv("GOST_LISTEN_ADDR"); val != "" {
+	if val := os.Getenv("LOADSTAR_LISTEN_ADDR"); val != "" {
 		cfg.ListenAddr = val
 	}
 	if val := os.Getenv("DATABASE_URL"); val != "" {
 		cfg.DBURL = val
 	}
-	if val := os.Getenv("GOST_API_KEY"); val != "" {
+	if val := os.Getenv("LOADSTAR_API_KEY"); val != "" {
 		cfg.APIKey = val
 	}
-	if val := os.Getenv("GOST_GOOGLE_API_KEY"); val != "" {
+	if val := os.Getenv("LOADSTAR_GOOGLE_API_KEY"); val != "" {
 		cfg.GoogleAPIKey = val
 	}
-	if val := os.Getenv("GOST_WORKERS"); val != "" {
+	if val := os.Getenv("LOADSTAR_WORKERS"); val != "" {
 		if n, err := strconv.Atoi(val); err == nil {
 			cfg.Workers = n
 		}
 	}
-	if val := os.Getenv("GOST_QUEUE_DEPTH"); val != "" {
+	if val := os.Getenv("LOADSTAR_QUEUE_DEPTH"); val != "" {
 		if n, err := strconv.Atoi(val); err == nil {
 			cfg.QueueDepth = n
 		}
 	}
-	if val := os.Getenv("GOST_TIMEOUT_S"); val != "" {
+	if val := os.Getenv("LOADSTAR_TIMEOUT_S"); val != "" {
 		if n, err := strconv.Atoi(val); err == nil {
 			cfg.TimeoutS = n
 		}
 	}
-	if val := os.Getenv("GOST_ALLOW_INSECURE"); val == "true" {
+	if val := os.Getenv("LOADSTAR_ALLOW_INSECURE"); val == "true" {
 		cfg.AllowInsecure = true
 	}
-	if val := os.Getenv("GOST_RETENTION_DAYS"); val != "" {
+	if val := os.Getenv("LOADSTAR_RETENTION_DAYS"); val != "" {
 		if n, err := strconv.Atoi(val); err == nil {
 			cfg.RetentionDays = n
 		}
 	}
 	// Default is true, so only an explicit "false" disables the scheduler.
-	if val := os.Getenv("GOST_SCHEDULER_ENABLED"); val == "false" {
+	if val := os.Getenv("LOADSTAR_SCHEDULER_ENABLED"); val == "false" {
 		cfg.SchedulerEnabled = false
 	}
-	if val := os.Getenv("GOST_RUM_ORIGINS"); val != "" {
+	if val := os.Getenv("LOADSTAR_RUM_ORIGINS"); val != "" {
 		cfg.RUMOrigins = val
 	}
 

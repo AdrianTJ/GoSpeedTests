@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AdrianTJ/gospeedtest/internal/chrome"
+	"github.com/AdrianTJ/loadstar/internal/chrome"
 )
 
 func TestCollect(t *testing.T) {
@@ -21,7 +21,7 @@ func TestCollect(t *testing.T) {
 <html>
 <head><title>Test Page</title></head>
 <body>
-    <h1>Hello, GoSpeedTest!</h1>
+    <h1>Hello, Loadstar!</h1>
 </body>
 </html>`))
 	}))

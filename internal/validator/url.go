@@ -41,7 +41,7 @@ func ValidateURL(targetURL string) error {
 
 	for _, ip := range ips {
 		if !allowPrivate && isPrivateIP(ip) {
-			return fmt.Errorf("URL points to a private or restricted IP address: %s (set GOST_ALLOW_PRIVATE_IPS=true to allow this if intentional)", ip.String())
+			return fmt.Errorf("URL points to a private or restricted IP address: %s (set LOADSTAR_ALLOW_PRIVATE_IPS=true to allow this if intentional)", ip.String())
 		}
 	}
 
@@ -53,7 +53,7 @@ func isPrivateIP(ip net.IP) bool {
 }
 
 // allowPrivateIPs reports whether the private-IP guard has been disabled via
-// the GOST_ALLOW_PRIVATE_IPS escape hatch (intended for local testing).
+// the LOADSTAR_ALLOW_PRIVATE_IPS escape hatch (intended for local testing).
 func allowPrivateIPs() bool {
-	return os.Getenv("GOST_ALLOW_PRIVATE_IPS") == "true"
+	return os.Getenv("LOADSTAR_ALLOW_PRIVATE_IPS") == "true"
 }

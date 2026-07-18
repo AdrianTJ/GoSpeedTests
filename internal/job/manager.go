@@ -12,16 +12,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AdrianTJ/gospeedtest/internal/budget"
-	"github.com/AdrianTJ/gospeedtest/internal/chrome"
-	"github.com/AdrianTJ/gospeedtest/internal/collector/browser"
-	"github.com/AdrianTJ/gospeedtest/internal/collector/lighthouse"
-	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
-	"github.com/AdrianTJ/gospeedtest/internal/collector/vitals"
-	"github.com/AdrianTJ/gospeedtest/internal/metrics"
-	"github.com/AdrianTJ/gospeedtest/internal/profile"
-	"github.com/AdrianTJ/gospeedtest/internal/store"
-	"github.com/AdrianTJ/gospeedtest/internal/validator"
+	"github.com/AdrianTJ/loadstar/internal/budget"
+	"github.com/AdrianTJ/loadstar/internal/chrome"
+	"github.com/AdrianTJ/loadstar/internal/collector/browser"
+	"github.com/AdrianTJ/loadstar/internal/collector/lighthouse"
+	"github.com/AdrianTJ/loadstar/internal/collector/network"
+	"github.com/AdrianTJ/loadstar/internal/collector/vitals"
+	"github.com/AdrianTJ/loadstar/internal/metrics"
+	"github.com/AdrianTJ/loadstar/internal/profile"
+	"github.com/AdrianTJ/loadstar/internal/store"
+	"github.com/AdrianTJ/loadstar/internal/validator"
 	"github.com/google/uuid"
 )
 
@@ -68,14 +68,14 @@ func NewManager(s store.Store, workerCount int, queueDepth int, googleAPIKey str
 		pendingJobs:     make(map[string]struct{}),
 		metrics:         metrics.NewRegistry(),
 	}
-	m.metrics.Help("gost_jobs_total", "Jobs processed, by final status.")
-	m.metrics.Help("gost_job_duration_seconds", "Wall-clock job processing time.")
-	m.metrics.Help("gost_queue_depth", "Jobs currently buffered in the queue.")
-	m.metrics.Help("gost_webhook_deliveries_total", "Webhook delivery attempts, by result.")
-	m.metrics.Help("gost_scheduler_runs_total", "Scheduler decisions, by result.")
-	m.metrics.Help("gost_retention_purged_total", "Rows removed by retention, by kind.")
-	m.metrics.Help("gost_last_metric_ms", "Latest metric values for scheduled URLs.")
-	m.metrics.GaugeFunc("gost_queue_depth", func() float64 { return float64(len(m.jobQueue)) })
+	m.metrics.Help("loadstar_jobs_total", "Jobs processed, by final status.")
+	m.metrics.Help("loadstar_job_duration_seconds", "Wall-clock job processing time.")
+	m.metrics.Help("loadstar_queue_depth", "Jobs currently buffered in the queue.")
+	m.metrics.Help("loadstar_webhook_deliveries_total", "Webhook delivery attempts, by result.")
+	m.metrics.Help("loadstar_scheduler_runs_total", "Scheduler decisions, by result.")
+	m.metrics.Help("loadstar_retention_purged_total", "Rows removed by retention, by kind.")
+	m.metrics.Help("loadstar_last_metric_ms", "Latest metric values for scheduled URLs.")
+	m.metrics.GaugeFunc("loadstar_queue_depth", func() float64 { return float64(len(m.jobQueue)) })
 	return m
 }
 
@@ -405,8 +405,8 @@ func (m *Manager) processJob(job *store.Job) {
 		slog.Error("Failed to update job status", "job_id", job.ID, "status", status, "error", err)
 	}
 
-	m.metrics.CounterInc("gost_jobs_total", "status", string(status))
-	m.metrics.Observe("gost_job_duration_seconds", time.Since(jobStart).Seconds())
+	m.metrics.CounterInc("loadstar_jobs_total", "status", string(status))
+	m.metrics.Observe("loadstar_job_duration_seconds", time.Since(jobStart).Seconds())
 	// Latest-value gauges only for scheduled jobs: schedules are user-curated,
 	// so the url label cardinality stays bounded.
 	if job.ScheduleID != "" && lastMetrics != nil {
@@ -417,7 +417,7 @@ func (m *Manager) processJob(job *store.Job) {
 			{"vitals.lcp_ms", "lcp"},
 		} {
 			if v, ok := lastMetrics[g.key]; ok {
-				m.metrics.GaugeSet("gost_last_metric_ms", v, "url", job.URL, "metric", g.name)
+				m.metrics.GaugeSet("loadstar_last_metric_ms", v, "url", job.URL, "metric", g.name)
 			}
 		}
 	}
@@ -589,7 +589,7 @@ func (m *Manager) sendOneWebhook(client *http.Client, d store.WebhookDelivery) {
 
 	if success {
 		slog.Info("Webhook delivered", "job_id", d.JobID, "delivery_id", d.ID, "attempts", d.Attempts)
-		m.metrics.CounterInc("gost_webhook_deliveries_total", "result", "success")
+		m.metrics.CounterInc("loadstar_webhook_deliveries_total", "result", "success")
 		m.setWebhookStatus(d, "SUCCESS", nil)
 		return
 	}
@@ -597,11 +597,11 @@ func (m *Manager) sendOneWebhook(client *http.Client, d store.WebhookDelivery) {
 	// Handle failure
 	if d.Attempts >= maxWebhookRetries {
 		slog.Error("Webhook failed permanently", "job_id", d.JobID, "delivery_id", d.ID, "attempts", d.Attempts, "error", err)
-		m.metrics.CounterInc("gost_webhook_deliveries_total", "result", "failed")
+		m.metrics.CounterInc("loadstar_webhook_deliveries_total", "result", "failed")
 		m.setWebhookStatus(d, "FAILED", nil)
 		return
 	}
-	m.metrics.CounterInc("gost_webhook_deliveries_total", "result", "retry")
+	m.metrics.CounterInc("loadstar_webhook_deliveries_total", "result", "retry")
 
 	// Calculate exponential backoff (e.g., 2, 4, 8, 16, 32 seconds)
 	backoff := time.Duration(math.Pow(2, float64(d.Attempts))) * time.Second

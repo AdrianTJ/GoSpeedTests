@@ -17,7 +17,7 @@ func TestNewSafeClient_BlocksPrivateIP(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	t.Setenv("GOST_ALLOW_PRIVATE_IPS", "false")
+	t.Setenv("LOADSTAR_ALLOW_PRIVATE_IPS", "false")
 
 	client := NewSafeClient(5 * time.Second)
 	resp, err := client.Get(ts.URL)
@@ -28,14 +28,14 @@ func TestNewSafeClient_BlocksPrivateIP(t *testing.T) {
 }
 
 // TestNewSafeClient_AllowsPrivateIPWhenConfigured verifies the escape hatch:
-// with GOST_ALLOW_PRIVATE_IPS=true the same loopback connection succeeds.
+// with LOADSTAR_ALLOW_PRIVATE_IPS=true the same loopback connection succeeds.
 func TestNewSafeClient_AllowsPrivateIPWhenConfigured(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer ts.Close()
 
-	t.Setenv("GOST_ALLOW_PRIVATE_IPS", "true")
+	t.Setenv("LOADSTAR_ALLOW_PRIVATE_IPS", "true")
 
 	client := NewSafeClient(5 * time.Second)
 	resp, err := client.Get(ts.URL)

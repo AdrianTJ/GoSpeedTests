@@ -9,7 +9,7 @@ import (
 	"net/http/httptrace"
 	"time"
 
-	"github.com/AdrianTJ/gospeedtest/internal/validator"
+	"github.com/AdrianTJ/loadstar/internal/validator"
 )
 
 // Result represents the metrics collected at the network level.

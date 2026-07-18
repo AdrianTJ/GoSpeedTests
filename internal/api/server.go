@@ -8,13 +8,13 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/AdrianTJ/gospeedtest/docs"
-	"github.com/AdrianTJ/gospeedtest/internal/budget"
-	"github.com/AdrianTJ/gospeedtest/internal/job"
-	"github.com/AdrianTJ/gospeedtest/internal/profile"
-	"github.com/AdrianTJ/gospeedtest/internal/store"
-	"github.com/AdrianTJ/gospeedtest/internal/tier"
-	"github.com/AdrianTJ/gospeedtest/internal/validator"
+	"github.com/AdrianTJ/loadstar/docs"
+	"github.com/AdrianTJ/loadstar/internal/budget"
+	"github.com/AdrianTJ/loadstar/internal/job"
+	"github.com/AdrianTJ/loadstar/internal/profile"
+	"github.com/AdrianTJ/loadstar/internal/store"
+	"github.com/AdrianTJ/loadstar/internal/tier"
+	"github.com/AdrianTJ/loadstar/internal/validator"
 )
 
 const (
@@ -68,7 +68,7 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 				next.ServeHTTP(w, r)
 				return
 			}
-			http.Error(w, "server misconfigured: GOST_API_KEY is required for this route (or set GOST_ALLOW_INSECURE=true for local testing)", http.StatusInternalServerError)
+			http.Error(w, "server misconfigured: LOADSTAR_API_KEY is required for this route (or set LOADSTAR_ALLOW_INSECURE=true for local testing)", http.StatusInternalServerError)
 			return
 		}
 
@@ -110,7 +110,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /metrics", s.authMiddleware(http.HandlerFunc(s.handleMetrics)))
 
 	// RUM ingest: public by design (browsers beacon here), but disabled until
-	// GOST_RUM_ORIGINS is configured; the summary endpoint stays protected.
+	// LOADSTAR_RUM_ORIGINS is configured; the summary endpoint stays protected.
 	mux.HandleFunc("POST /v1/rum", s.handleRUMIngest)
 	mux.HandleFunc("OPTIONS /v1/rum", s.handleRUMPreflight)
 	mux.Handle("GET /v1/rum/summary", s.authMiddleware(http.HandlerFunc(s.handleRUMSummary)))
@@ -140,7 +140,7 @@ func (s *Server) handleDocs(w http.ResponseWriter, r *http.Request) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>GoSpeedTest API Docs</title>
+  <title>Loadstar API Docs</title>
   <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css" />
 </head>
 <body>

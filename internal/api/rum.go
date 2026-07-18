@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AdrianTJ/gospeedtest/internal/stats"
-	"github.com/AdrianTJ/gospeedtest/internal/store"
+	"github.com/AdrianTJ/loadstar/internal/stats"
+	"github.com/AdrianTJ/loadstar/internal/store"
 	"github.com/google/uuid"
 )
 

@@ -1,6 +1,6 @@
 openapi: 3.0.0
 info:
-  title: GoSpeedTest API
+  title: Loadstar API
   description: High-performance page speed analysis engine written in Go.
   version: 1.0.0
 servers:
@@ -209,7 +209,7 @@ components:
           maximum: 10
         timeout_s:
           type: integer
-          description: Per-run timeout in seconds. 0 uses the server default (GOST_TIMEOUT_S).
+          description: Per-run timeout in seconds. 0 uses the server default (LOADSTAR_TIMEOUT_S).
           minimum: 0
           maximum: 600
         webhook_url:
@@ -476,9 +476,9 @@ paths:
       summary: Prometheus metrics (text exposition format)
       description: >
         Requires the API key — configure your Prometheus scrape job to send the
-        X-API-Key header. Exposes gost_jobs_total, gost_job_duration_seconds,
-        gost_queue_depth, gost_webhook_deliveries_total, gost_scheduler_runs_total,
-        gost_retention_purged_total, and gost_last_metric_ms (scheduled URLs only).
+        X-API-Key header. Exposes loadstar_jobs_total, loadstar_job_duration_seconds,
+        loadstar_queue_depth, loadstar_webhook_deliveries_total, loadstar_scheduler_runs_total,
+        loadstar_retention_purged_total, and loadstar_last_metric_ms (scheduled URLs only).
       security:
         - ApiKeyAuth: []
       responses:
@@ -512,7 +512,7 @@ paths:
       summary: Ingest a real-user metric beacon
       description: >
         Public (no API key) so browsers can beacon directly, but disabled with
-        404 unless GOST_RUM_ORIGINS is configured. CORS-checked against that
+        404 unless LOADSTAR_RUM_ORIGINS is configured. CORS-checked against that
         allow-list, body capped at 8 KB, values validated, and globally
         rate-limited. Send with navigator.sendBeacon using the web-vitals
         library (see README "Real User Monitoring").
@@ -530,7 +530,7 @@ paths:
         '403':
           description: Origin not in the allow-list
         '404':
-          description: Endpoint disabled (GOST_RUM_ORIGINS not configured)
+          description: Endpoint disabled (LOADSTAR_RUM_ORIGINS not configured)
         '429':
           description: Rate limit exceeded
 

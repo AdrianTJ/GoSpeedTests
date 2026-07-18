@@ -6,8 +6,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN go build -o /gost ./cmd/gost
-RUN go build -o /gostd ./cmd/gostd
+RUN go build -o /loadstar ./cmd/loadstar
 
 # Stage 2: Runtime image with Google Chrome
 FROM debian:bullseye-slim
@@ -31,27 +30,26 @@ RUN apt-get update && apt-get install -y \
 RUN chown root:root /opt/google/chrome/chrome-sandbox \
     && chmod 4755 /opt/google/chrome/chrome-sandbox
 
-COPY --from=builder /gost /usr/local/bin/gost
-COPY --from=builder /gostd /usr/local/bin/gostd
+COPY --from=builder /loadstar /usr/local/bin/loadstar
 
 # Set environment variables
 ENV GOST_LISTEN_ADDR=":8080"
-ENV DATABASE_URL="/data/gospeedtest.db"
+ENV DATABASE_URL="/data/loadstar.db"
 
 # Create a non-privileged user and a data directory it owns.
-RUN groupadd --system gost \
-    && useradd --system --gid gost --create-home --home-dir /home/gost gost \
+RUN groupadd --system loadstar \
+    && useradd --system --gid loadstar --create-home --home-dir /home/loadstar loadstar \
     && mkdir -p /data \
-    && chown -R gost:gost /data
+    && chown -R loadstar:loadstar /data
 
 # Drop root: run the daemon (and the Chrome processes it spawns) unprivileged.
-USER gost
+USER loadstar
 
 EXPOSE 8080
 
 # Recommended: run with an init to reap zombie Chrome processes and a
 # Chrome-compatible seccomp profile, e.g.:
-#   docker run --init --security-opt seccomp=chrome.json -p 8080:8080 gost
+#   docker run --init --security-opt seccomp=chrome.json -p 8080:8080 loadstar
 # Hosts without unprivileged user namespaces may need the setuid sandbox (kept
 # above) or, as a last resort in an isolated deployment, GOST_CHROME_NO_SANDBOX=true.
-ENTRYPOINT ["gostd"]
+ENTRYPOINT ["loadstar", "serve"]

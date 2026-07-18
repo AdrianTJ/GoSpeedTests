@@ -10,16 +10,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/AdrianTJ/gospeedtest/internal/api"
-	"github.com/AdrianTJ/gospeedtest/internal/config"
-	"github.com/AdrianTJ/gospeedtest/internal/job"
-	"github.com/AdrianTJ/gospeedtest/internal/store"
+	"github.com/AdrianTJ/loadstar/internal/api"
+	"github.com/AdrianTJ/loadstar/internal/config"
+	"github.com/AdrianTJ/loadstar/internal/job"
+	"github.com/AdrianTJ/loadstar/internal/store"
 )
 
-func main() {
-	configPath := flag.String("config", "config.yaml", "Path to config file")
-	insecurePtr := flag.Bool("insecure", false, "Allow running without an API key (DANGEROUS)")
-	flag.Parse()
+// serveCmd implements "loadstar serve": the long-running API daemon.
+func serveCmd(args []string) {
+	fs := flag.NewFlagSet("serve", flag.ExitOnError)
+	configPath := fs.String("config", "config.yaml", "Path to config file")
+	insecurePtr := fs.Bool("insecure", false, "Allow running without an API key (DANGEROUS)")
+	_ = fs.Parse(args) // ExitOnError: Parse exits on bad flags, never returns an error
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
@@ -35,7 +37,7 @@ func main() {
 	}
 
 	if cfg.APIKey == "" && !cfg.AllowInsecure {
-		slog.Error("FATAL: GOST_API_KEY is not set. For security, the server will not start without a key. To bypass this for local testing, use the -insecure flag or set GOST_ALLOW_INSECURE=true.")
+		slog.Error("FATAL: LOADSTAR_API_KEY is not set. For security, the server will not start without a key. To bypass this for local testing, use the -insecure flag or set LOADSTAR_ALLOW_INSECURE=true.")
 		os.Exit(1)
 	}
 
@@ -48,10 +50,10 @@ func main() {
 
 	dbURL := cfg.DBURL
 	if dbURL == "" {
-		dbURL = "./gospeedtest.db"
+		dbURL = "./loadstar.db"
 	}
 
-	slog.Info("Starting GoSpeedTest", "backend", "sqlite", "db_url", dbURL)
+	slog.Info("Starting Loadstar", "backend", "sqlite", "db_url", dbURL)
 	s, err := store.NewStore(dbURL)
 	if err != nil {
 		slog.Error("Failed to initialize store", "error", err)

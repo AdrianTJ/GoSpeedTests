@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AdrianTJ/gospeedtest/internal/store"
+	"github.com/AdrianTJ/loadstar/internal/store"
 )
 
 func TestWebhookRetries(t *testing.T) {

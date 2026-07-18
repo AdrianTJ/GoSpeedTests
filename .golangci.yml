@@ -16,7 +16,7 @@ linters:
         - (*os.File).Close
         - (*database/sql.DB).Close
         - (*database/sql.Rows).Close
-        - (github.com/AdrianTJ/gospeedtest/internal/store.Store).Close
+        - (github.com/AdrianTJ/loadstar/internal/store.Store).Close
         # Rollback on an error path: the original error is what matters.
         - (*database/sql.Tx).Rollback
         # Writes to an http.ResponseWriter or terminal report output: a failed

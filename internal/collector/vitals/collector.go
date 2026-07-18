@@ -32,10 +32,10 @@ type Result struct {
 const settleDelay = 3 * time.Second
 
 // observerJS is installed before navigation (so buffered observers catch
-// every entry) and accumulates vitals into window.__gost.
+// every entry) and accumulates vitals into window.__loadstar.
 const observerJS = `
 (() => {
-	const g = window.__gost = { lcp: 0, fcp: 0, cls: 0, tbt: 0 };
+	const g = window.__loadstar = { lcp: 0, fcp: 0, cls: 0, tbt: 0 };
 
 	try {
 		new PerformanceObserver((list) => {
@@ -87,7 +87,7 @@ const observerJS = `
 // pages where an observer type is unsupported.
 const readVitalsJS = `
 (() => {
-	const g = window.__gost || { lcp: 0, fcp: 0, cls: 0, tbt: 0 };
+	const g = window.__loadstar || { lcp: 0, fcp: 0, cls: 0, tbt: 0 };
 	if (!g.fcp) {
 		for (const e of performance.getEntriesByType('paint')) {
 			if (e.name === 'first-contentful-paint') g.fcp = e.startTime;

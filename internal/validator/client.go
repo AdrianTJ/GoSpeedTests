@@ -15,7 +15,7 @@ import (
 // resolution but before the socket is opened — it closes the DNS-rebinding
 // (TOCTOU) window that ValidateURL alone cannot: the address it checks is the
 // address that actually gets dialed. It is gated by the same
-// GOST_ALLOW_PRIVATE_IPS escape hatch as ValidateURL.
+// LOADSTAR_ALLOW_PRIVATE_IPS escape hatch as ValidateURL.
 func safeControl(_ string, address string, _ syscall.RawConn) error {
 	if allowPrivateIPs() {
 		return nil

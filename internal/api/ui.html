@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GoSpeedTest</title>
+<title>Loadstar</title>
 <style>
   :root {
     --bg: #f6f7f9; --card: #ffffff; --text: #1a202c; --muted: #64748b;
@@ -70,7 +70,7 @@
 </head>
 <body>
 <header>
-  <h1>Go<span>SpeedTest</span></h1>
+  <h1>Load<span>star</span> ✦</h1>
   <div class="spacer"></div>
   <input id="apikey" type="password" placeholder="X-API-Key (if required)" autocomplete="off">
   <nav class="links"><a href="/docs">API docs</a><a href="/metrics">metrics</a></nav>
@@ -108,7 +108,7 @@
 
   <footer>
     Read-only status page. Jobs and schedules refresh every 10s. Use the
-    <a href="/docs">API</a> or <code>gost</code> CLI to create jobs; dashboards
+    <a href="/docs">API</a> or <code>loadstar</code> CLI to create jobs; dashboards
     and alerting belong in Grafana via <a href="/metrics">/metrics</a>.
   </footer>
 </main>
@@ -116,9 +116,9 @@
 "use strict";
 const $ = (sel) => document.querySelector(sel);
 const keyInput = $("#apikey");
-keyInput.value = localStorage.getItem("gost_api_key") || "";
+keyInput.value = localStorage.getItem("loadstar_api_key") || "";
 keyInput.addEventListener("change", () => {
-  localStorage.setItem("gost_api_key", keyInput.value);
+  localStorage.setItem("loadstar_api_key", keyInput.value);
   refresh();
 });
 
@@ -186,7 +186,7 @@ function fillEmpty(tbody, cols, msg) {
 async function loadJobs() {
   const jobs = await api("/v1/jobs");
   const tbody = $("#jobs tbody");
-  if (!jobs || !jobs.length) return fillEmpty(tbody, 7, "No jobs yet — submit one: POST /v1/jobs or run gost.");
+  if (!jobs || !jobs.length) return fillEmpty(tbody, 7, "No jobs yet — submit one: POST /v1/jobs or run `loadstar run`.");
   tbody.replaceChildren();
   for (const j of jobs.slice(0, 15)) {
     const tr = document.createElement("tr");

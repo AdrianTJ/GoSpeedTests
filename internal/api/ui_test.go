@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AdrianTJ/gospeedtest/internal/job"
-	"github.com/AdrianTJ/gospeedtest/internal/store"
+	"github.com/AdrianTJ/loadstar/internal/job"
+	"github.com/AdrianTJ/loadstar/internal/store"
 )
 
 func newUITestServer(t *testing.T) http.Handler {
@@ -39,7 +39,7 @@ func TestStatusPage_ServedPublicly(t *testing.T) {
 	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
 		t.Errorf("content type = %q, want text/html", ct)
 	}
-	if !strings.Contains(w.Body.String(), "GoSpeedTest") {
+	if !strings.Contains(w.Body.String(), "Loadstar") {
 		t.Error("status page body missing title")
 	}
 }

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AdrianTJ/gospeedtest/internal/collector/network"
+	"github.com/AdrianTJ/loadstar/internal/collector/network"
 )
 
 func TestJobStatus(t *testing.T) {

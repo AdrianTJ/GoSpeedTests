@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AdrianTJ/gospeedtest/internal/job"
-	"github.com/AdrianTJ/gospeedtest/internal/store"
+	"github.com/AdrianTJ/loadstar/internal/job"
+	"github.com/AdrianTJ/loadstar/internal/store"
 )
 
 func newScheduleTestServer(t *testing.T, name, apiKey string, insecure bool) http.Handler {
@@ -166,7 +166,7 @@ func TestMetricsEndpoint(t *testing.T) {
 		t.Errorf("content-type = %q, want text/plain", ct)
 	}
 	body := w.Body.String()
-	for _, want := range []string{"# TYPE gost_queue_depth gauge", "gost_queue_depth 0"} {
+	for _, want := range []string{"# TYPE loadstar_queue_depth gauge", "loadstar_queue_depth 0"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("metrics body missing %q:\n%s", want, body)
 		}

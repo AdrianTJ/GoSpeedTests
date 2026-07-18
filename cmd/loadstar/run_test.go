@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestGostCLI(t *testing.T) {
+func TestRunCLI(t *testing.T) {
 	// Setup test server
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -20,9 +20,9 @@ func TestGostCLI(t *testing.T) {
 	// Run the CLI against the test server. Use the network tier only so the
 	// test does not require a headless Chrome install, and resolve "go" from
 	// PATH rather than a hardcoded path.
-	cmd := exec.Command("go", "run", ".", "-u", ts.URL, "-t", "network", "-f", "json")
-	cmd.Dir = "." // Current directory cmd/gost
-	cmd.Env = append(os.Environ(), "GOST_ALLOW_PRIVATE_IPS=true")
+	cmd := exec.Command("go", "run", ".", "run", "-u", ts.URL, "-t", "network", "-f", "json")
+	cmd.Dir = "." // Current directory cmd/loadstar
+	cmd.Env = append(os.Environ(), "LOADSTAR_ALLOW_PRIVATE_IPS=true")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("CLI execution failed: %v\nOutput: %s", err, string(output))
