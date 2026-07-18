@@ -51,3 +51,7 @@ vendor/
 # Environment files
 .env
 config.yaml
+
+# built binaries
+loadstar
+bin/
