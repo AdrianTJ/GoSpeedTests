@@ -6,68 +6,24 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/AdrianTJ/loadstar/internal/budget"
 	"github.com/AdrianTJ/loadstar/internal/job"
-	"github.com/AdrianTJ/loadstar/internal/profile"
 	"github.com/AdrianTJ/loadstar/internal/store"
-	"github.com/AdrianTJ/loadstar/internal/validator"
 	"github.com/google/uuid"
 )
 
 func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		URL             string         `json:"url"`
-		Tiers           []string       `json:"tiers"`
-		Runs            int            `json:"runs"`
-		IntervalSeconds int            `json:"interval_seconds"`
-		Budget          *budget.Budget `json:"budget"`
-		WebhookURL      string         `json:"webhook_url"`
-		Profile         string         `json:"profile"`
+		testSpec
+		IntervalSeconds int `json:"interval_seconds"`
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+	if !decodeAndValidate(w, r, &req, &req.testSpec) {
 		return
 	}
 
-	if req.URL == "" {
-		http.Error(w, "url is required", http.StatusBadRequest)
-		return
-	}
-	if err := validator.ValidateURL(req.URL); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if err := validateTiers(req.Tiers); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if req.WebhookURL != "" {
-		if err := validator.ValidateURL(req.WebhookURL); err != nil {
-			http.Error(w, "invalid webhook_url: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-	}
-	if req.Runs <= 0 {
-		req.Runs = 1
-	}
-	if req.Runs > maxRuns {
-		http.Error(w, fmt.Sprintf("runs parameter cannot exceed %d", maxRuns), http.StatusBadRequest)
-		return
-	}
+	// Schedule-specific: the recurrence interval.
 	if req.IntervalSeconds < job.MinScheduleIntervalS {
 		http.Error(w, fmt.Sprintf("interval_seconds must be at least %d", job.MinScheduleIntervalS), http.StatusBadRequest)
-		return
-	}
-	if req.Budget != nil {
-		if err := req.Budget.Validate(); err != nil {
-			http.Error(w, "invalid budget: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-	}
-	if !profile.Valid(req.Profile) {
-		http.Error(w, profile.ErrUnknown(req.Profile).Error(), http.StatusBadRequest)
 		return
 	}
 

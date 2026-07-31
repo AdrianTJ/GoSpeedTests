@@ -172,3 +172,74 @@ func TestMetricsEndpoint(t *testing.T) {
 		}
 	}
 }
+
+// TestSharedSpecValidation_JobsAndSchedulesAgree pins the property that made
+// the refactor worth doing: /v1/jobs and /v1/schedules accept the same "what to
+// measure" fields, so they must reject the same input with the same message.
+//
+// When these checks were duplicated, the July 2026 SSRF allow-list gap had to
+// be fixed and tested on both paths independently — a fix landing on one and
+// missing the other would have left the hole open on the other endpoint. This
+// test fails if the two ever drift apart again.
+func TestSharedSpecValidation_JobsAndSchedulesAgree(t *testing.T) {
+	mux := newScheduleTestServer(t, "shared-spec", "", true)
+
+	// Each case supplies only the shared fields; the endpoint-specific ones
+	// (timeout_s, interval_seconds) are added per request below and are valid
+	// throughout, so any 400 must come from the shared validation.
+	cases := []struct {
+		name string
+		spec string
+	}{
+		{"missing url", `"url":""`},
+		{"private ip target", `"url":"http://127.0.0.1/"`},
+		{"cgnat target", `"url":"http://100.100.100.200/"`},
+		{"metadata target", `"url":"http://169.254.169.254/"`},
+		{"bad scheme", `"url":"ftp://example.com/"`},
+		{"unknown tier", `"url":"http://93.184.216.34/","tiers":["bogus"]`},
+		{"runs over cap", `"url":"http://93.184.216.34/","runs":11`},
+		{"unknown profile", `"url":"http://93.184.216.34/","profile":"warp-9"`},
+		{"invalid budget", `"url":"http://93.184.216.34/","budget":{"assertions":{"nope.metric":{"max":1}}}`},
+		{"webhook to private ip", `"url":"http://93.184.216.34/","webhook_url":"http://10.0.0.1/hook"`},
+		{"webhook to cgnat", `"url":"http://93.184.216.34/","webhook_url":"http://100.64.0.1/hook"`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			jobResp := doJSON(t, mux, http.MethodPost, "/v1/jobs",
+				"{"+tc.spec+`,"timeout_s":30}`, nil)
+			schedResp := doJSON(t, mux, http.MethodPost, "/v1/schedules",
+				"{"+tc.spec+`,"interval_seconds":300}`, nil)
+
+			if jobResp.Code != http.StatusBadRequest {
+				t.Errorf("/v1/jobs status = %d, want 400 (body: %s)",
+					jobResp.Code, strings.TrimSpace(jobResp.Body.String()))
+			}
+			if schedResp.Code != http.StatusBadRequest {
+				t.Errorf("/v1/schedules status = %d, want 400 (body: %s)",
+					schedResp.Code, strings.TrimSpace(schedResp.Body.String()))
+			}
+			if got, want := strings.TrimSpace(schedResp.Body.String()), strings.TrimSpace(jobResp.Body.String()); got != want {
+				t.Errorf("endpoints disagree on the rejection reason:\n  /v1/jobs:      %q\n  /v1/schedules: %q", want, got)
+			}
+		})
+	}
+}
+
+// The shared validation must not swallow the endpoint-specific rules.
+func TestEndpointSpecificValidationStillApplies(t *testing.T) {
+	mux := newScheduleTestServer(t, "spec-specific", "", true)
+	const okURL = `"url":"http://93.184.216.34/"`
+
+	if w := doJSON(t, mux, http.MethodPost, "/v1/jobs", "{"+okURL+`,"timeout_s":9999}`, nil); w.Code != http.StatusBadRequest {
+		t.Errorf("out-of-range timeout_s: status = %d, want 400", w.Code)
+	}
+	if w := doJSON(t, mux, http.MethodPost, "/v1/schedules", "{"+okURL+`,"interval_seconds":5}`, nil); w.Code != http.StatusBadRequest {
+		t.Errorf("below-minimum interval_seconds: status = %d, want 400", w.Code)
+	}
+	// A schedule must not inherit the job-only timeout_s rule, nor vice versa.
+	if w := doJSON(t, mux, http.MethodPost, "/v1/schedules", "{"+okURL+`,"interval_seconds":300,"timeout_s":9999}`, nil); w.Code != http.StatusCreated {
+		t.Errorf("schedule with an irrelevant timeout_s: status = %d, want 201 (body: %s)",
+			w.Code, strings.TrimSpace(w.Body.String()))
+	}
+}

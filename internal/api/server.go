@@ -3,6 +3,7 @@ package api
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -33,6 +34,76 @@ func validateTiers(tiers []string) error {
 		}
 	}
 	return nil
+}
+
+// testSpec is the "what to measure and how" shared by job and schedule
+// creation. Both endpoints accept the same fields with the same rules, and
+// keeping the checks in one place is a security property rather than a tidiness
+// one: when these were duplicated, the July 2026 SSRF allow-list gap had to be
+// fixed and tested on two separate paths, and a fix applied to one and missed
+// on the other would have left the hole open on the other endpoint.
+//
+// Embedded anonymously into each request struct, so callers still send (and the
+// OpenAPI spec still documents) one flat JSON object.
+type testSpec struct {
+	URL        string         `json:"url"`
+	Tiers      []string       `json:"tiers"`
+	Runs       int            `json:"runs"`
+	WebhookURL string         `json:"webhook_url"`
+	Budget     *budget.Budget `json:"budget"`
+	Profile    string         `json:"profile"`
+}
+
+// validate checks the shared fields and normalises Runs in place. The returned
+// error is written straight to the client, so its text is part of the API's
+// contract; the messages match what each endpoint returned previously.
+func (spec *testSpec) validate() error {
+	if spec.URL == "" {
+		return errors.New("url is required")
+	}
+	if err := validator.ValidateURL(spec.URL); err != nil {
+		return err
+	}
+	if err := validateTiers(spec.Tiers); err != nil {
+		return err
+	}
+	if spec.WebhookURL != "" {
+		if err := validator.ValidateURL(spec.WebhookURL); err != nil {
+			return fmt.Errorf("invalid webhook_url: %w", err)
+		}
+	}
+	if spec.Runs <= 0 {
+		spec.Runs = 1
+	}
+	if spec.Runs > maxRuns {
+		return fmt.Errorf("runs parameter cannot exceed %d", maxRuns)
+	}
+	if spec.Budget != nil {
+		if err := spec.Budget.Validate(); err != nil {
+			return fmt.Errorf("invalid budget: %w", err)
+		}
+	}
+	if !profile.Valid(spec.Profile) {
+		return profile.ErrUnknown(spec.Profile)
+	}
+	return nil
+}
+
+// decodeAndValidate reads a size-capped JSON body into dst and runs the shared
+// validation. It writes the 400 response itself and reports whether the handler
+// should continue.
+func decodeAndValidate(w http.ResponseWriter, r *http.Request, dst interface{}, spec *testSpec) bool {
+	// Cap the request body so a large payload cannot exhaust memory.
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return false
+	}
+	if err := spec.validate(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return false
+	}
+	return true
 }
 
 type Server struct {
@@ -217,67 +288,18 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		URL        string         `json:"url"`
-		Tiers      []string       `json:"tiers"`
-		Runs       int            `json:"runs"`
-		TimeoutS   int            `json:"timeout_s"`
-		WebhookURL string         `json:"webhook_url"`
-		Budget     *budget.Budget `json:"budget"`
-		Profile    string         `json:"profile"`
+		testSpec
+		TimeoutS int `json:"timeout_s"`
 	}
 
-	// Cap the request body so a large payload cannot exhaust memory.
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+	if !decodeAndValidate(w, r, &req, &req.testSpec) {
 		return
 	}
 
-	if req.URL == "" {
-		http.Error(w, "url is required", http.StatusBadRequest)
-		return
-	}
-
-	if err := validator.ValidateURL(req.URL); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if err := validateTiers(req.Tiers); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if req.WebhookURL != "" {
-		if err := validator.ValidateURL(req.WebhookURL); err != nil {
-			http.Error(w, "invalid webhook_url: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-	}
-
-	if req.Runs <= 0 {
-		req.Runs = 1
-	}
-
-	if req.Runs > maxRuns {
-		http.Error(w, fmt.Sprintf("runs parameter cannot exceed %d", maxRuns), http.StatusBadRequest)
-		return
-	}
-
+	// Job-specific: the per-run timeout has no meaning for a schedule, which
+	// inherits the daemon default.
 	if req.TimeoutS < 0 || req.TimeoutS > maxTimeoutS {
 		http.Error(w, fmt.Sprintf("timeout_s must be between 0 and %d", maxTimeoutS), http.StatusBadRequest)
-		return
-	}
-
-	if req.Budget != nil {
-		if err := req.Budget.Validate(); err != nil {
-			http.Error(w, "invalid budget: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-	}
-
-	if !profile.Valid(req.Profile) {
-		http.Error(w, profile.ErrUnknown(req.Profile).Error(), http.StatusBadRequest)
 		return
 	}
 
