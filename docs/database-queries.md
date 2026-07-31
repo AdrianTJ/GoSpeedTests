@@ -1,6 +1,6 @@
 # Database Query Reference (SQLite)
 
-This document provides useful SQL queries for inspecting and analyzing the GoSpeedTest results stored in the `gospeedtest.db` SQLite database.
+This document provides useful SQL queries for inspecting and analyzing the Loadstar results stored in the `loadstar.db` SQLite database.
 
 ## 1. Quick Job Overview
 View the status and creation time of all submitted jobs, ordered by most recent.
@@ -87,8 +87,10 @@ ORDER BY created_at DESC;
 
 ## 7. Performance Optimization
 
-### Recommended: SQLite Generated Columns
-Create a virtual or stored generated column and index it for fast aggregations on TTFB.
+### Optional: SQLite Generated Columns
+Not used by Loadstar today (metrics are read from JSON with `json_extract`).
+If history aggregation becomes slow, a stored generated column plus an index
+is the natural next step:
 
 ```sql
 ALTER TABLE results ADD COLUMN ttfb_ms REAL AS (json_extract(network, '$.ttfb_ms'));
@@ -103,8 +105,8 @@ To use these queries from your terminal with formatted output:
 
 ```bash
 # Enter interactive mode with headers and columns
-sqlite3 -header -column gospeedtest.db
+sqlite3 -header -column loadstar.db
 
 # Run a single query and exit
-sqlite3 -header -column gospeedtest.db "SELECT * FROM jobs LIMIT 10;"
+sqlite3 -header -column loadstar.db "SELECT * FROM jobs LIMIT 10;"
 ```
