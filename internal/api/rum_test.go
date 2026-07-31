@@ -283,3 +283,39 @@ func TestRUM_SummaryBadWindow(t *testing.T) {
 		}
 	}
 }
+
+// TestRUMIngest_URLLengthBounded is the regression for the July 2026 audit
+// finding SEC-6. /v1/rum is a public write endpoint and the url is an
+// attacker-chosen label; every other field was bounded but this one was not,
+// so a beacon could carry ~8 KB of url per row into a table whose retention
+// default is "keep forever".
+func TestRUMIngest_URLLengthBounded(t *testing.T) {
+	_, mux, _ := newRUMTestServer(t, "rum-urllen", []string{"*"})
+
+	post := func(target string) int {
+		body, err := json.Marshal(map[string]interface{}{
+			"url": target, "name": "LCP", "value": 1200,
+		})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		return postRUM(mux, string(body), "").Code
+	}
+
+	long := "https://example.com/" + strings.Repeat("a", maxURLLen)
+	if code := post(long); code != http.StatusBadRequest {
+		t.Errorf("over-long url: status = %d, want 400", code)
+	}
+
+	// A normal beacon, and one right at the limit, must still be accepted.
+	if code := post("https://example.com/page"); code != http.StatusNoContent {
+		t.Errorf("normal url: status = %d, want 204", code)
+	}
+	atLimit := "https://example.com/" + strings.Repeat("b", maxURLLen-len("https://example.com/"))
+	if len(atLimit) != maxURLLen {
+		t.Fatalf("test bug: built a %d-byte url, want %d", len(atLimit), maxURLLen)
+	}
+	if code := post(atLimit); code != http.StatusNoContent {
+		t.Errorf("url exactly at the limit: status = %d, want 204", code)
+	}
+}
