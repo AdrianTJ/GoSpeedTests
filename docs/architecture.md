@@ -219,5 +219,7 @@ Everything else in `go.mod` is an indirect dependency of these four.
 
 - **Distributed workers** — remote worker nodes coordinated by a central daemon.
 - **Generated columns** — if history aggregation becomes a bottleneck (§4).
-- **`gosec` / `govulncheck` in CI** — see the follow-up note in
-  [security.md](security.md).
+
+CI runs `gofmt`, `go vet`, the build, the short test suite, `gosec` and
+`govulncheck` on every push and pull request; see
+[security.md](security.md) for how the security scanners are configured.

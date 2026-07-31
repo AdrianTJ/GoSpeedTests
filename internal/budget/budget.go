@@ -106,6 +106,8 @@ func Parse(data []byte) (*Budget, error) {
 
 // LoadFile reads and parses a budget file (YAML or JSON).
 func LoadFile(path string) (*Budget, error) {
+	// #nosec G304 -- path comes from the CLI's -budget flag, not from a
+	// request. Anyone who can set it can already read the file as this user.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading budget file: %w", err)

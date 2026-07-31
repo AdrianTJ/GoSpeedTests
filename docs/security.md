@@ -404,9 +404,12 @@ meaningless aggregate.
 
 ## Follow-Up Not Yet Done
 
-- **No `gosec` or `govulncheck` in CI.** `.golangci.yml` runs the default
-  linter set, which is why the missing `ReadHeaderTimeout` (gosec G112) went
-  unflagged. Adding both to `.github/workflows/ci.yml` would have caught
-  finding §9 automatically.
+- ~~**No `gosec` or `govulncheck` in CI.**~~ **Done, July 31, 2026.** Both now
+  run on every push and pull request. `gosec` is configured with `-exclude=G104`
+  because errcheck already owns unhandled-error policy via `.golangci.yml`;
+  the two `G304` findings (operator-supplied `-config` and `-budget` paths) are
+  annotated `#nosec` with justifications at the call sites. Verified that
+  removing the timeouts from `newHTTPServer` makes `gosec` report G112 again,
+  so finding §9 could not recur unnoticed.
 - **Chrome-tier DNS rebinding (§3) and the Chrome sandbox (§5)** still depend
   partly on deployment topology; unchanged by this review.

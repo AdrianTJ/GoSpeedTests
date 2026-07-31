@@ -36,3 +36,30 @@ jobs:
       # no headless Chrome, so we run the short suite here.
       - name: Test
         run: go test -short ./...
+
+      # Static security analysis. gosec catches the class of defect that the
+      # default linter set does not: the July 2026 audit's missing
+      # ReadHeaderTimeout was a gosec G112 finding that went unnoticed for
+      # months because nothing was looking for it.
+      #
+      # G104 (unhandled errors) is excluded because errcheck already owns that
+      # policy, and .golangci.yml defines the project's deliberate exclusions
+      # for idiomatic fire-and-forget calls. Running both would mean
+      # maintaining the same allow-list twice, in two different formats.
+      #
+      # Tool versions are pinned so a new release cannot turn an unrelated PR
+      # red without an explicit bump.
+      - name: Security scan (gosec)
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.28.0
+          gosec -quiet -exclude=G104 ./...
+
+      # Reports known CVEs in dependencies, filtered to those actually
+      # reachable from this code. Blocking on purpose: a reachable
+      # vulnerability in a dependency is a real defect. If a newly published
+      # advisory ever blocks unrelated work, bump or drop the dependency
+      # rather than muting the check.
+      - name: Vulnerability scan (govulncheck)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+          govulncheck ./...

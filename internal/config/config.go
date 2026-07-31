@@ -65,6 +65,9 @@ func Load(filePath string) (*Config, error) {
 
 	// 1. Try to load from file
 	if filePath != "" {
+		// #nosec G304 -- filePath comes from the operator's -config flag, not
+		// from a request. Anyone who can set it can already read the file as
+		// the daemon's user.
 		f, err := os.Open(filePath)
 		if err == nil {
 			defer f.Close()
