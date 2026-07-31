@@ -16,6 +16,34 @@ import (
 	"github.com/AdrianTJ/loadstar/internal/store"
 )
 
+// HTTP server timeouts. Go's net/http applies none by default, which leaves a
+// daemon open to Slowloris: a client that opens connections and dribbles
+// headers forever pins a goroutine per connection until the process dies.
+//
+// The values are sized for this API's traffic — every handler is a bounded
+// SQLite read or an enqueue, so no legitimate request needs to hold a
+// connection for long. Job execution is asynchronous and does not run on the
+// request goroutine, so writeTimeout does not bound how long a test may take.
+const (
+	readHeaderTimeout = 10 * time.Second
+	readTimeout       = 30 * time.Second
+	writeTimeout      = 60 * time.Second
+	idleTimeout       = 120 * time.Second
+)
+
+// newHTTPServer builds the daemon's HTTP server with those timeouts applied.
+// Split out from serveCmd so the configuration is testable.
+func newHTTPServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
+	}
+}
+
 // serveCmd implements "loadstar serve": the long-running API daemon.
 func serveCmd(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
@@ -81,7 +109,7 @@ func serveCmd(args []string) {
 		srv.SetRUMOrigins(origins)
 		slog.Info("RUM ingest enabled", "origins", origins)
 	}
-	httpServer := &http.Server{Addr: cfg.ListenAddr, Handler: srv.Routes()}
+	httpServer := newHTTPServer(cfg.ListenAddr, srv.Routes())
 
 	go func() {
 		slog.Info("API server starting", "addr", cfg.ListenAddr)
