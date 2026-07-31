@@ -393,6 +393,40 @@ meaningless aggregate.
 
 ---
 
+## 13. Known Standard-Library Vulnerabilities via an Outdated Toolchain
+> [!WARNING]
+> **Severity:** Medium
+> **Impact:** DoS and information disclosure through the HTTP and TLS paths.
+> **Status: Fixed, July 31, 2026** — found by `govulncheck` on its first CI run.
+
+#### The Problem
+`go.mod` pinned `go 1.26.2`, and CI installs exactly the version named there, so
+the build shipped a standard library three patch releases behind. `govulncheck`
+reported five vulnerabilities **reachable from this code** — all in the standard
+library, none in third-party dependencies:
+
+| ID | Package | Fixed in | Why it matters here |
+|---|---|---|---|
+| GO-2026-5856 | `crypto/tls` — Encrypted Client Hello privacy leak | go1.26.5 | Every outbound HTTPS measurement |
+| GO-2026-5039 | `net/textproto` — arbitrary input in errors without escaping | go1.26.4 | Response headers from an arbitrary target reach `jobs.error`, which the API returns |
+| GO-2026-5037 | `crypto/x509` — inefficient candidate hostname parsing | go1.26.4 | A hostile certificate can burn CPU on a target we were asked to measure |
+| GO-2026-4971 | `net` — panic on NUL byte in `Dial`/`LookupPort` | go1.26.3 | Reachable from `validator.ValidateURL` (Windows only) |
+| GO-2026-4918 | `net/http` — infinite loop on bad `SETTINGS_MAX_FRAME_SIZE` | go1.26.3 | A malicious target could hang a worker via HTTP/2 |
+
+These are not abstract for Loadstar. The daemon exists to fetch URLs chosen by
+its users, so hostile-server bugs in the HTTP and TLS stacks are directly on the
+attack surface — GO-2026-4918 in particular is a worker-hang primitive, and
+GO-2026-5039 is the same shape as finding §7: untrusted bytes reaching an error
+string that the API hands back to callers.
+
+#### Mitigation
+Raised the `go` directive to `1.26.5`, the lowest release that clears all five.
+`README.md` and `GETTING_STARTED.md` state the requirement (the latter still
+claimed 1.21). Keeping the toolchain current is now enforced rather than
+remembered: `govulncheck` fails the build whenever a reachable advisory appears.
+
+---
+
 ## Findings Reviewed and Accepted
 
 | Observation | Disposition |
