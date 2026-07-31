@@ -15,8 +15,13 @@ import (
 )
 
 const (
-	maxRUMBody         = 8 << 10 // beacons are tiny; anything bigger is abuse
-	maxRUMValue        = 600000  // 10 minutes in ms — beyond any plausible vital
+	maxRUMBody  = 8 << 10 // beacons are tiny; anything bigger is abuse
+	maxRUMValue = 600000  // 10 minutes in ms — beyond any plausible vital
+	// maxURLLen bounds the url label. Unlike the user agent (truncated, since a
+	// clipped UA is still a usable label) an over-long url is rejected:
+	// truncating would silently merge distinct pages into one bogus aggregate.
+	// 2048 is the de-facto ceiling browsers enforce on URLs anyway.
+	maxURLLen          = 2048
 	maxUserAgentLen    = 256
 	rumEventsPerSecond = 100
 	rumBurst           = 200
@@ -139,6 +144,13 @@ func (s *Server) handleRUMIngest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("value out of range [0, %d)", maxRUMValue), http.StatusBadRequest)
 		return
 	}
+	// The url is an unauthenticated, attacker-chosen label that becomes a row
+	// and an index entry, and retention defaults to keeping data forever — so
+	// it has to be bounded like every other field on this endpoint.
+	if len(ev.URL) > maxURLLen {
+		http.Error(w, fmt.Sprintf("url exceeds %d bytes", maxURLLen), http.StatusBadRequest)
+		return
+	}
 	// Plain URL syntax check only — validator.ValidateURL does SSRF/DNS work
 	// meant for URLs the daemon fetches; RUM URLs are labels, never fetched.
 	u, err := url.Parse(ev.URL)
@@ -153,7 +165,7 @@ func (s *Server) handleRUMIngest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.SaveRUMEvent(r.Context(), &store.RUMEvent{
-		ID:        "rum_" + uuid.New().String()[:8],
+		ID:        "rum_" + uuid.New().String(),
 		URL:       ev.URL,
 		Metric:    ev.Name,
 		Value:     ev.Value,

@@ -27,7 +27,7 @@ As the primary agent for Loadstar, you are a senior Go engineer with deep expert
 - **Responsibilities:**
     - Manage the Job State Machine (PENDING → RUNNING → COMPLETED/FAILED/TIMEOUT).
     - Optimize the worker pool and job queue in `internal/job`.
-    - Ensure the REST API (`gostd`) follows the V1 specification and remains backward compatible.
+    - Ensure the REST API (`loadstar serve`) follows the V1 specification and remains backward compatible.
 - **Guidelines:**
     - Use Go channels and `sync` primitives for thread-safe state transitions.
     - Implement rigorous error handling for the async job model.
@@ -51,12 +51,12 @@ As the primary agent for Loadstar, you are a senior Go engineer with deep expert
 
 - **Mandate:** Provide a seamless and intuitive CLI interface for ad-hoc testing and scripting.
 - **Responsibilities:**
-    - Maintain the `gost` binary and its global flags.
+    - Maintain the `loadstar run` subcommand and its flags.
     - Develop and refine report formatters (JSON, Text, CSV) in `internal/report`.
     - Ensure configuration parity between CLI flags, environment variables, and `config.yaml`.
 - **Guidelines:**
     - Follow POSIX-style flag conventions.
-    - Ensure the CLI can run independently of the `gostd` server.
+    - Ensure the CLI can run independently of the daemon.
     - Prioritize clear, human-readable stdout for the `text` format.
 
 ---
@@ -64,7 +64,7 @@ As the primary agent for Loadstar, you are a senior Go engineer with deep expert
 ## Technical Mandates (Cross-Cutting)
 
 1. **Standard Library First:** Only use approved dependencies listed in Section 8 of the Technical Documentation. Avoid adding new dependencies without explicit justification.
-2. **Monorepo Integrity:** Keep `internal/` packages strictly internal. Use them to share logic between `gost` and `gostd`.
+2. **Monorepo Integrity:** Keep `internal/` packages strictly internal. Use them to share logic between the `run` and `serve` subcommands.
 3. **Error Handling:** Use wrapped errors (`fmt.Errorf("...: %w", err)`) to provide rich context across architectural layers.
 4. **Concurrency:** Always pass `context.Context` through the collector and store layers to support timeouts and cancellations.
 5. **Testing:** Every new feature or bug fix must include unit tests. Integration tests for the `browser` collector are mandatory for any changes to ChromeDP logic.

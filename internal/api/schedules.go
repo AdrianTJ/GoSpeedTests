@@ -73,7 +73,7 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	sc := &store.Schedule{
-		ID:              "sc_" + uuid.New().String()[:8],
+		ID:              "sc_" + uuid.New().String(),
 		URL:             req.URL,
 		Tiers:           req.Tiers,
 		Runs:            req.Runs,

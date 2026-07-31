@@ -186,4 +186,4 @@ To get the most out of the **Lighthouse** tier, you should get a Google API Key 
 
 ---
 
-Enjoy exploring your site's performance! If you have questions, check the `/planning` folder for deep technical docs or the `/docs/openapi.yaml` for full API specs.
+Enjoy exploring your site's performance! If you have questions, check the [`docs/`](docs/) folder for the architecture and decision log, or [`docs/openapi.yaml`](docs/openapi.yaml) for the full API spec.

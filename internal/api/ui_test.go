@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -68,5 +69,62 @@ func TestOpenAPI_ServedFromEmbed(t *testing.T) {
 	}
 	if !strings.HasPrefix(w.Body.String(), "openapi:") {
 		t.Errorf("spec body does not look like OpenAPI YAML: %q", w.Body.String()[:40])
+	}
+}
+
+// TestStatusPage_CSPNonce is part of the regression for the July 2026 audit
+// finding SEC-4. The status page holds the operator's API key in localStorage,
+// so its inline <style>/<script> are pinned with a per-response nonce rather
+// than opened up with 'unsafe-inline'.
+func TestStatusPage_CSPNonce(t *testing.T) {
+	srv := &Server{}
+	rec := httptest.NewRecorder()
+	srv.handleUI(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	csp := rec.Header().Get("Content-Security-Policy")
+	if csp == "" {
+		t.Fatal("no Content-Security-Policy on the status page")
+	}
+	if strings.Contains(csp, "unsafe-inline") {
+		t.Errorf("CSP allows unsafe-inline: %s", csp)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, noncePlaceholder) {
+		t.Errorf("nonce placeholder %q was not substituted", noncePlaceholder)
+	}
+
+	// The nonce in the CSP must be the one actually on the tags, or the
+	// browser blocks the page's own script.
+	m := regexp.MustCompile(`'nonce-([^']+)'`).FindStringSubmatch(csp)
+	if m == nil {
+		t.Fatalf("CSP carries no nonce: %s", csp)
+	}
+	nonce := m[1]
+	for _, tag := range []string{`<style nonce="` + nonce + `">`, `<script nonce="` + nonce + `">`} {
+		if !strings.Contains(body, tag) {
+			t.Errorf("page is missing %s", tag)
+		}
+	}
+}
+
+// A nonce that repeats across responses is no better than unsafe-inline.
+func TestStatusPage_NonceIsPerResponse(t *testing.T) {
+	srv := &Server{}
+	nonceOf := func() string {
+		rec := httptest.NewRecorder()
+		srv.handleUI(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+		m := regexp.MustCompile(`'nonce-([^']+)'`).FindStringSubmatch(
+			rec.Header().Get("Content-Security-Policy"))
+		if m == nil {
+			t.Fatal("CSP carries no nonce")
+		}
+		return m[1]
+	}
+	if a, b := nonceOf(), nonceOf(); a == b {
+		t.Errorf("nonce reused across responses: %s", a)
 	}
 }

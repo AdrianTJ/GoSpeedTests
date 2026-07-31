@@ -163,7 +163,7 @@ func runCmd(args []string) {
 		// the measurement run, but silence would let a bad -db path masquerade
 		// as saved data — warn on every failure.
 		if s != nil {
-			jobID := "cli_" + uuid.New().String()[:8]
+			jobID := "cli_" + uuid.New().String()
 			if err := s.CreateJob(context.Background(), &store.Job{
 				ID: jobID, URL: *urlPtr, Status: store.StatusCompleted,
 				Tiers: []string{tier}, Runs: 1, Budget: budg, Profile: prof.Name, CreatedAt: time.Now(),
@@ -171,7 +171,7 @@ func runCmd(args []string) {
 				slog.Warn("Failed to persist job", "job_id", jobID, "error", err)
 			}
 			if err := s.SaveResult(context.Background(), &store.Result{
-				ID: "res_" + uuid.New().String()[:8], JobID: jobID, RunIndex: i,
+				ID: "res_" + uuid.New().String(), JobID: jobID, RunIndex: i,
 				Network: res.Network, Browser: res.Browser, Vitals: res.Vitals,
 				Lighthouse: res.Lighthouse, CollectedAt: time.Now(),
 			}); err != nil {

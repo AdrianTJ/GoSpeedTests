@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Loadstar</title>
-<style>
+<style nonce="{{NONCE}}">
   :root {
     --bg: #f6f7f9; --card: #ffffff; --text: #1a202c; --muted: #64748b;
     --border: #e2e8f0; --accent: #2563eb;
@@ -112,7 +112,7 @@
     and alerting belong in Grafana via <a href="/metrics">/metrics</a>.
   </footer>
 </main>
-<script>
+<script nonce="{{NONCE}}">
 "use strict";
 const $ = (sel) => document.querySelector(sel);
 const keyInput = $("#apikey");

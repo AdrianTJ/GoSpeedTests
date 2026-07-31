@@ -173,7 +173,7 @@ export LOADSTAR_RUM_ORIGINS="https://www.your-site.example"   # or "*"
 ```html
 <script type="module">
   import {onLCP, onCLS, onINP, onFCP, onTTFB} from 'https://unpkg.com/web-vitals@4?module';
-  const send = (m) => navigator.sendBeacon('https://YOUR-GOSTD-HOST/v1/rum',
+  const send = (m) => navigator.sendBeacon('https://YOUR-LOADSTAR-HOST/v1/rum',
     JSON.stringify({url: location.href, name: m.name, value: m.value}));
   onLCP(send); onCLS(send); onINP(send); onFCP(send); onTTFB(send);
 </script>
@@ -256,10 +256,14 @@ compatibility.
 
 - **[GETTING STARTED GUIDE](GETTING_STARTED.md)** (Start here!)
 - **Interactive API Docs:** Visit `http://localhost:8080/docs` when the server is running to explore the API via Swagger UI.
-- [Technical Design Document](planning/technical_documentation.md)
-- [Testing Guide](planning/testing_guide.md)
-- [Architectural Decision Log](planning/decision_log.md)
-- [Database Query Reference](planning/database_queries.md)
+- [Architecture](docs/architecture.md) — how it fits together and why
+- [Architectural Decision Log](docs/decisions.md) — the reasoning behind each choice
+- [Security Review](docs/security.md) — findings, mitigations, and deployment guidance
+- [Database Query Reference](docs/database-queries.md) — inspecting `loadstar.db` directly
+
+Testing: `go test ./...` for unit tests, `scripts/dogfood.sh` for the end-to-end
+suite (add `--with-chrome` for the browser tiers), and
+`scripts/dogfood_security.sh` for the security regression suite.
 
 ---
 

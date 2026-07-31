@@ -179,15 +179,15 @@ assert_code "runs=11 -> 400" 400 "$(hcode -H "$H" -X POST $B/v1/jobs -d '{"url":
 assert_code "missing url -> 400" 400 "$(hcode -H "$H" -X POST $B/v1/jobs -d '{}')"
 assert_code "ftp scheme -> 400"  400 "$(hcode -H "$H" -X POST $B/v1/jobs -d '{"url":"ftp://x"}')"
 
-jid=$(curl -s -H "$H" -X POST $B/v1/jobs -d '{"url":"http://127.0.0.1:'$FIX'/page","tiers":["network"]}' | grep -o 'jb_[0-9a-f]*')
+jid=$(curl -s -H "$H" -X POST $B/v1/jobs -d '{"url":"http://127.0.0.1:'$FIX'/page","tiers":["network"]}' | grep -o 'jb_[0-9a-f-]*')
 assert_code "create job accepted" 202 "$([ -n "$jid" ] && echo 202 || echo 000)"
 assert_code "job completes" COMPLETED "$(poll $API "$KEY" "$jid")"
 
 echo "== webhooks =="
-wjid=$(curl -s -H "$H" -X POST $B/v1/jobs -d '{"url":"http://127.0.0.1:'$FIX'/page","tiers":["network"],"webhook_url":"http://127.0.0.1:'$WH_OK'/hook"}' | grep -o 'jb_[0-9a-f]*')
+wjid=$(curl -s -H "$H" -X POST $B/v1/jobs -d '{"url":"http://127.0.0.1:'$FIX'/page","tiers":["network"],"webhook_url":"http://127.0.0.1:'$WH_OK'/hook"}' | grep -o 'jb_[0-9a-f-]*')
 poll $API "$KEY" "$wjid" >/dev/null; sleep 1
 assert_has "webhook delivered with results payload" '"results"' "$(cat "$WORK/wh_ok.log" 2>/dev/null)"
-rjid=$(curl -s -H "$H" -X POST $B/v1/jobs -d '{"url":"http://127.0.0.1:'$FIX'/page","tiers":["network"],"webhook_url":"http://127.0.0.1:'$WH_RETRY'/hook"}' | grep -o 'jb_[0-9a-f]*')
+rjid=$(curl -s -H "$H" -X POST $B/v1/jobs -d '{"url":"http://127.0.0.1:'$FIX'/page","tiers":["network"],"webhook_url":"http://127.0.0.1:'$WH_RETRY'/hook"}' | grep -o 'jb_[0-9a-f-]*')
 poll $API "$KEY" "$rjid" >/dev/null; sleep 5
 hits=$(grep -c '^HIT' "$WORK/wh_retry.log" 2>/dev/null || echo 0)
 assert_code "webhook retried (>=2 hits)" ok "$([ "${hits:-0}" -ge 2 ] && echo ok || echo "hits=$hits")"
@@ -197,7 +197,7 @@ assert_has "history aggregates" '"test_count"' "$(curl -s -H "$H" "$B/v1/history
 assert_code "history missing param -> 400" 400 "$(hcode -H "$H" "$B/v1/history")"
 
 echo "== DELETE -> FK cascade (audit fix) =="
-djid=$(curl -s -H "$H" -X POST $B/v1/jobs -d '{"url":"http://127.0.0.1:'$FIX'/page","tiers":["network"],"webhook_url":"http://127.0.0.1:'$WH_OK'/hook"}' | grep -o 'jb_[0-9a-f]*')
+djid=$(curl -s -H "$H" -X POST $B/v1/jobs -d '{"url":"http://127.0.0.1:'$FIX'/page","tiers":["network"],"webhook_url":"http://127.0.0.1:'$WH_OK'/hook"}' | grep -o 'jb_[0-9a-f-]*')
 poll $API "$KEY" "$djid" >/dev/null; sleep 1
 before=$(probe "$WORK/api.db" "$djid")
 assert_has "before delete: rows exist" "results=1 webhooks=1" "$before"

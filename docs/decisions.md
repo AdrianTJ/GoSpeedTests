@@ -1,12 +1,12 @@
 # Architectural Decision Log (ADL)
 
-This document tracks the key architectural and design decisions made during the implementation of GoSpeedTest. It serves as a historical record for future contributors and a guide for maintaining consistency in the codebase.
+This document tracks the key architectural and design decisions made during the implementation of Loadstar. It serves as a historical record for future contributors and a guide for maintaining consistency in the codebase.
 
 ---
 
 ## 1. Project Structure: Monorepo & Internal Packages
 **Decision:** Use a Go monorepo structure with a strict `internal/` package convention.
-- **Rationale:** Shared logic (collectors, store, job management) is centralized in `internal/` to prevent external projects from importing private implementation details, while allowing both the CLI (`gost`) and the Daemon (`gostd`) to reuse the same robust engine.
+- **Rationale:** Shared logic (collectors, store, job management) is centralized in `internal/` to prevent external projects from importing private implementation details, while allowing the CLI (`loadstar run`) and the daemon (`loadstar serve`) to reuse the same robust engine.
 - **Outcome:** Clean separation between the entry points in `cmd/` and the core business logic.
 
 ## 2. Collection Strategy: Three-Tiered Model
@@ -76,7 +76,7 @@ This document tracks the key architectural and design decisions made during the 
 
 ## 15. Lighthouse Integration: PageSpeed Insights (PSI) API
 **Decision:** Use the Google PageSpeed Insights API instead of a local Lighthouse CLI.
-- **Rationale:** A local Lighthouse CLI requires a Node.js environment and can be resource-intensive to run alongside the Go application. The PSI API provides high-fidelity, standardized results without requiring additional local dependencies or significantly increasing the resource footprint of the `gostd` daemon.
+- **Rationale:** A local Lighthouse CLI requires a Node.js environment and can be resource-intensive to run alongside the Go application. The PSI API provides high-fidelity, standardized results without requiring additional local dependencies or significantly increasing the resource footprint of the daemon.
 - **Outcome:** Simplified deployment and lower local resource usage.
 
 ## 16. Webhook Destination Validation (SSRF Prevention)
@@ -99,7 +99,73 @@ This document tracks the key architectural and design decisions made during the 
 - **Rationale:** Spawning an infinite number of Chrome sessions via a single API call can cause complete server resource exhaustion and worker queue starvation.
 - **Outcome:** Protection against simple Denial of Service (DoS) attacks.
 
+## 20. Single Binary with Subcommands
+**Decision:** Collapse the separate `gost` and `gostd` binaries into one
+`loadstar` binary with `run` and `serve` subcommands.
+- **Rationale:** Two binaries built from one module shared almost all their
+  wiring, and users had to know which of two names to install. One binary makes
+  distribution and documentation simpler.
+- **Outcome:** `loadstar run` for one-off tests, `loadstar serve` for the daemon.
+
+## 21. Performance Budgets Evaluated on the Median
+**Decision:** Judge budget assertions against the median across runs, and treat
+a metric that was never collected as a failed assertion.
+- **Rationale:** Web performance is noisy, so a single slow run should not fail
+  a build. But missing data must never silently pass a CI gate — a tier that
+  failed to run is not evidence of success.
+- **Outcome:** Budgets are stable under noise and fail closed. `actual` is
+  reported as `null` for missing metrics so "absent" is distinguishable from
+  "over threshold".
+
+## 22. Scheduling in the Daemon Rather Than Cron
+**Decision:** Build recurring monitors into the daemon instead of documenting a
+cron recipe.
+- **Rationale:** Cron cannot see whether the previous run is still going, so a
+  slow target produces overlapping jobs. An internal scheduler can skip the
+  interval and record the skip.
+- **Outcome:** Schedules with a minimum 60s interval, pile-up protection, and a
+  `loadstar_scheduler_runs_total{result="skipped"}` counter.
+
+## 23. Real User Monitoring as an Opt-In Public Endpoint
+**Decision:** Accept browser beacons at `POST /v1/rum`, disabled until
+`LOADSTAR_RUM_ORIGINS` is set.
+- **Rationale:** INP cannot be measured in a lab — it requires real
+  interactions — so field data is the only way to get it. But a public write
+  endpoint is a liability, so it must be off by default and bounded on every
+  field.
+- **Outcome:** Field percentiles alongside lab history, with the endpoint
+  invisible (404) until an operator deliberately enables it.
+
+## 24. Export Metrics, Do Not Build Dashboards
+**Decision:** Ship a Prometheus `/metrics` endpoint and a deliberately minimal
+read-only status page, rather than a dashboard UI.
+- **Rationale:** Grafana and Alertmanager already solve trending and alerting
+  far better than we would. The status page exists only for the quick "is it
+  running, did the budget pass" check.
+- **Outcome:** One embedded HTML file, no build step, no write operations, and
+  bounded label cardinality on the metrics (scheduled URLs only).
+
+## 25. Redact Rather Than Re-Plumb the PSI Credential
+**Decision:** Strip the query string from `*url.Error` in the Lighthouse
+collector instead of moving the API key to a request header.
+- **Rationale:** Moving the key to `X-Goog-Api-Key` is arguably cleaner, but it
+  could not be verified against the live PSI API without a real key, and
+  silently breaking the Lighthouse tier is worse than a redacted error message.
+  Redaction closes the disclosure path regardless of how the key travels.
+- **Outcome:** No credential in job errors, logs, or API responses, with no
+  change to a working integration. See §7 of `security.md`.
+
+## 26. Full-Entropy Identifiers
+**Decision:** Use complete UUIDs for generated ids rather than an 8-character
+prefix.
+- **Rationale:** 8 hex characters is a 2^32 space; the first collision arrives
+  at roughly 159,000 ids, which the RUM endpoint reaches in about 26 minutes at
+  its own rate limit. Colliding inserts fail, and a failed `SaveResult` is only
+  logged — so collisions silently dropped measurements.
+- **Outcome:** Readable prefixes retained (`jb_`, `res_`, `sc_`, …), collisions
+  eliminated. Consumers must not assume the old length or charset.
+
 ---
-*Last Updated: May 20, 2026*
+*Last Updated: July 31, 2026*
 
 
