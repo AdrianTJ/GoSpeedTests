@@ -53,5 +53,7 @@ vendor/
 config.yaml
 
 # built binaries
-loadstar
+# Anchored: a bare "loadstar" also matches the cmd/loadstar source directory,
+# which silently hides new files added there from git.
+/loadstar
 bin/
