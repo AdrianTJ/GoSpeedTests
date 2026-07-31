@@ -156,7 +156,7 @@ func (m *Manager) SubmitJob(ctx context.Context, opts SubmitOptions) (*store.Job
 		timeoutS = defaultTimeoutS
 	}
 	job := &store.Job{
-		ID:         "jb_" + uuid.New().String()[:8],
+		ID:         "jb_" + uuid.New().String(),
 		URL:        opts.URL,
 		Status:     store.StatusPending,
 		Tiers:      opts.Tiers,
@@ -299,7 +299,7 @@ func (m *Manager) processJob(job *store.Job) {
 	var lastMetrics map[string]float64  // most recent run's metrics, for the /metrics gauges
 	for i := 1; i <= job.Runs; i++ {
 		resultRecord := &store.Result{
-			ID:          "res_" + uuid.New().String()[:8],
+			ID:          "res_" + uuid.New().String(),
 			JobID:       job.ID,
 			RunIndex:    i,
 			CollectedAt: time.Now(),
@@ -499,7 +499,7 @@ func (m *Manager) sendWebhook(jobID string) {
 
 	// 2. Persist initial delivery record
 	delivery := &store.WebhookDelivery{
-		ID:        "wh_" + uuid.New().String()[:8],
+		ID:        "wh_" + uuid.New().String(),
 		JobID:     job.ID,
 		URL:       job.WebhookURL,
 		Payload:   body,

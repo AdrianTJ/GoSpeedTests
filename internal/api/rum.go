@@ -153,7 +153,7 @@ func (s *Server) handleRUMIngest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.SaveRUMEvent(r.Context(), &store.RUMEvent{
-		ID:        "rum_" + uuid.New().String()[:8],
+		ID:        "rum_" + uuid.New().String(),
 		URL:       ev.URL,
 		Metric:    ev.Name,
 		Value:     ev.Value,

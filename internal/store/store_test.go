@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/AdrianTJ/loadstar/internal/collector/network"
+
+	"github.com/google/uuid"
 )
 
 func TestJobStatus(t *testing.T) {
@@ -205,5 +207,36 @@ func TestGetHistory_EmptyAndPopulated(t *testing.T) {
 	}
 	if h.AvgTTFBMS != 10 || h.AvgTotalMS != 20 {
 		t.Errorf("unexpected averages: ttfb=%v total=%v", h.AvgTTFBMS, h.AvgTotalMS)
+	}
+}
+
+// TestGeneratedIDs_FullEntropy is the regression for the July 2026 audit
+// finding SEC-5. Every identifier used to be uuid.New().String()[:8] — 8 hex
+// characters, a 2^32 space — against TEXT PRIMARY KEY columns. Simulation put
+// the first collision at ~159k ids, which the public RUM endpoint reaches in
+// about 26 minutes at its own rate limit; a colliding insert fails, and for
+// results the manager only logs the error, so measurements were dropped
+// silently.
+func TestGeneratedIDs_FullEntropy(t *testing.T) {
+	// A UUID string is 36 characters. Anything shorter means someone
+	// reintroduced a truncation.
+	const uuidLen = 36
+
+	for _, prefix := range []string{"jb_", "res_", "wh_", "sc_", "rum_", "cli_"} {
+		id := prefix + uuid.New().String()
+		if got := len(id) - len(prefix); got != uuidLen {
+			t.Errorf("%s id carries %d chars of uuid, want %d", prefix, got, uuidLen)
+		}
+	}
+
+	// Sanity-check that the generator itself does not repeat over a run far
+	// larger than the old 8-char scheme survived.
+	seen := make(map[string]bool, 300_000)
+	for i := 0; i < 300_000; i++ {
+		id := uuid.New().String()
+		if seen[id] {
+			t.Fatalf("uuid collision after %d ids", i)
+		}
+		seen[id] = true
 	}
 }
