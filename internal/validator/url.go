@@ -48,8 +48,48 @@ func ValidateURL(targetURL string) error {
 	return nil
 }
 
+// restrictedNets are ranges that Go's net.IP predicates do not classify but
+// that are still not safe SSRF destinations. net.IP.IsPrivate() only covers
+// RFC 1918 (and IPv6 ULA), so without these a target in carrier-grade NAT
+// space — which real infrastructure uses for internal addressing — sails
+// through the guard.
+var restrictedNets = func() []*net.IPNet {
+	cidrs := []string{
+		// RFC 6598 carrier-grade NAT. Alibaba Cloud's instance metadata lives
+		// at 100.100.100.200, and Tailscale assigns mesh peers out of this
+		// range — on a tailnet-joined host every peer would otherwise be a
+		// valid target.
+		"100.64.0.0/10",
+		// RFC 6890 IETF protocol assignments.
+		"192.0.0.0/24",
+		// RFC 2544 benchmarking.
+		"198.18.0.0/15",
+		// RFC 6052 NAT64: these embed an IPv4 address, so 64:ff9b::7f00:1
+		// reaches 127.0.0.1 through a translator without tripping IsLoopback().
+		"64:ff9b::/96",
+	}
+	nets := make([]*net.IPNet, 0, len(cidrs))
+	for _, c := range cidrs {
+		_, n, err := net.ParseCIDR(c)
+		if err != nil {
+			panic("validator: bad restricted CIDR " + c + ": " + err.Error())
+		}
+		nets = append(nets, n)
+	}
+	return nets
+}()
+
 func isPrivateIP(ip net.IP) bool {
-	return ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() ||
+		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+	for _, n := range restrictedNets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // allowPrivateIPs reports whether the private-IP guard has been disabled via
