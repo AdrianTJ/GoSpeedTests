@@ -2,12 +2,16 @@ package api
 
 import (
 	"bytes"
+	"crypto/sha512"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -232,4 +236,93 @@ func TestAPIServer_RunsConstraint(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestDocs_SubresourceIntegrity is part of the regression for the July 2026
+// audit finding SEC-4. /docs is public and pulls Swagger UI from unpkg.com
+// onto the same origin where the status page stores the API key, so both
+// assets must be pinned by hash.
+func TestDocs_SubresourceIntegrity(t *testing.T) {
+	srv := &Server{}
+	rec := httptest.NewRecorder()
+	srv.handleDocs(rec, httptest.NewRequest(http.MethodGet, "/docs", nil))
+	body := rec.Body.String()
+
+	if n := strings.Count(body, `integrity="sha384-`); n != 2 {
+		t.Errorf("found %d SRI hashes in /docs, want 2 (css + js)", n)
+	}
+	if n := strings.Count(body, `crossorigin="anonymous"`); n != 2 {
+		t.Errorf("found %d crossorigin attributes, want 2 — SRI is not enforced without it", n)
+	}
+	for _, want := range []string{swaggerCSSHash, swaggerJSHash} {
+		if !strings.Contains(body, want) {
+			t.Errorf("/docs is missing hash %s", want)
+		}
+	}
+	if !strings.Contains(body, "unpkg.com/swagger-ui-dist@"+swaggerVersion+"/") {
+		t.Errorf("/docs does not pin swagger-ui-dist@%s", swaggerVersion)
+	}
+}
+
+// The CSP pins the page's inline bootstrap by hash. If the script body is
+// edited without recomputing swaggerBootstrap the browser silently refuses to
+// run it, so the mismatch is caught here instead.
+func TestDocs_InlineScriptHashMatchesCSP(t *testing.T) {
+	srv := &Server{}
+	rec := httptest.NewRecorder()
+	srv.handleDocs(rec, httptest.NewRequest(http.MethodGet, "/docs", nil))
+
+	m := regexp.MustCompile(`(?s)<script>(.*?)</script>`).FindStringSubmatch(rec.Body.String())
+	if m == nil {
+		t.Fatal("no inline <script> found in /docs")
+	}
+	sum := sha512.Sum384([]byte(m[1]))
+	got := "sha384-" + base64.StdEncoding.EncodeToString(sum[:])
+
+	if got != swaggerBootstrap {
+		t.Errorf("inline script hash drifted.\n  csp:      %s\n  computed: %s\n"+
+			"update swaggerBootstrap to the computed value", swaggerBootstrap, got)
+	}
+	if !strings.Contains(rec.Header().Get("Content-Security-Policy"), swaggerBootstrap) {
+		t.Error("/docs CSP does not carry the inline-script hash")
+	}
+}
+
+// TestSecurityHeaders covers the headers that must be on every response, and
+// the rule that HTML routes may override the default CSP.
+func TestSecurityHeaders(t *testing.T) {
+	t.Run("defaults applied to API responses", func(t *testing.T) {
+		h := securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/jobs", nil))
+
+		for header, want := range map[string]string{
+			"Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+			"X-Content-Type-Options":  "nosniff",
+			"X-Frame-Options":         "DENY",
+			"Referrer-Policy":         "no-referrer",
+		} {
+			if got := rec.Header().Get(header); got != want {
+				t.Errorf("%s = %q, want %q", header, got, want)
+			}
+		}
+	})
+
+	t.Run("handler CSP wins", func(t *testing.T) {
+		const own = "default-src 'self'"
+		h := securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Security-Policy", own)
+		}))
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+
+		if got := rec.Header().Get("Content-Security-Policy"); got != own {
+			t.Errorf("CSP = %q, want the handler's own %q", got, own)
+		}
+		if rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+			t.Error("non-CSP headers should still be applied")
+		}
+	})
 }

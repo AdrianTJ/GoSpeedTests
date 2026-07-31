@@ -81,6 +81,23 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// securityHeaders applies the headers that should be on every response. The
+// CSP here is the restrictive default for JSON APIs — routes that serve HTML
+// (/ and /docs) set their own, and a header already set by the handler is left
+// alone.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		if h.Get("Content-Security-Policy") == "" {
+			h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
+		}
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "no-referrer")
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
@@ -115,7 +132,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("OPTIONS /v1/rum", s.handleRUMPreflight)
 	mux.Handle("GET /v1/rum/summary", s.authMiddleware(http.HandlerFunc(s.handleRUMSummary)))
 
-	return mux
+	return securityHeaders(mux)
 }
 
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
@@ -132,31 +149,56 @@ func (s *Server) handleOpenAPI(w http.ResponseWriter, r *http.Request) {
 	w.Write(docs.OpenAPISpec)
 }
 
+// Subresource Integrity hashes for the pinned Swagger UI assets. Without
+// these, /docs — a public route — executes whatever unpkg.com happens to
+// serve, on the same origin where the status page keeps the operator's API key
+// in localStorage. A compromised or hijacked CDN response could read it.
+//
+// Both hashes are sha384 over the files in swagger-ui-dist@5.11.0. Recompute
+// them whenever the pinned version changes:
+//
+//	curl -sL https://unpkg.com/swagger-ui-dist@<ver>/<file> |
+//	  openssl dgst -sha384 -binary | openssl base64 -A
+const (
+	swaggerVersion = "5.11.0"
+	swaggerCSSHash = "sha384-+yyzNgM3K92sROwsXxYCxaiLWxWJ0G+v/9A+qIZ2rgefKgkdcmJI+L601cqPD/Ut"
+	swaggerJSHash  = "sha384-qn5tagrAjZi8cSmvZ+k3zk4+eDEEUcP9myuR2J6V+/H6rne++v6ChO7EeHAEzqxQ"
+	// sha384 of the inline bootstrap <script> body below, so the CSP can pin it
+	// by hash instead of opening the page up with 'unsafe-inline'. A test
+	// recomputes this from the rendered page, so editing the script without
+	// updating the hash fails the suite rather than breaking /docs at runtime.
+	swaggerBootstrap = "sha384-/hWp1J+9Jn6vvz6oTt5TLHx8hgY5M2aTGcksS8IiOacuhk8rmvWuooUYu9NPKkrP"
+)
+
 func (s *Server) handleDocs(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprint(w, `
-<!DOCTYPE html>
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// Scoped CSP: /docs is the one route that loads third-party assets, so it
+	// gets the unpkg exception the rest of the daemon does not. The inline
+	// bootstrap below is pinned by hash rather than allowed via unsafe-inline.
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'none'; "+
+			"script-src https://unpkg.com '"+swaggerBootstrap+"'; "+
+			"style-src https://unpkg.com 'unsafe-inline'; "+
+			"img-src 'self' data:; "+
+			"connect-src 'self'; "+
+			"base-uri 'none'; frame-ancestors 'none'")
+	fmt.Fprintf(w, `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Loadstar API Docs</title>
-  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css" />
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@%[1]s/swagger-ui.css"
+        integrity="%[2]s" crossorigin="anonymous" />
 </head>
 <body>
   <div id="swagger-ui"></div>
-  <script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js" crossorigin></script>
-  <script>
-    window.onload = () => {
-      window.ui = SwaggerUIBundle({
-        url: '/openapi.yaml',
-        dom_id: '#swagger-ui',
-      });
-    };
-  </script>
+  <script src="https://unpkg.com/swagger-ui-dist@%[1]s/swagger-ui-bundle.js"
+          integrity="%[3]s" crossorigin="anonymous"></script>
+  <script>window.onload=()=>{window.ui=SwaggerUIBundle({url:'/openapi.yaml',dom_id:'#swagger-ui'})}</script>
 </body>
 </html>
-`)
+`, swaggerVersion, swaggerCSSHash, swaggerJSHash)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
