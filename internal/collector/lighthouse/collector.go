@@ -3,11 +3,34 @@ package lighthouse
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"time"
 )
+
+// redactURLError strips the query string from a *url.Error before the error is
+// wrapped and returned.
+//
+// The PSI API key travels as a ?key= query parameter, and Go's transport
+// errors embed the full request URL in their message (`Get "https://…?key=…":
+// dial tcp: …`). Without this, any transport-level failure — a DNS blip, a
+// timeout, a reset connection — writes the key verbatim into the job's error
+// column, from where GET /v1/jobs/{id} hands it to every API caller.
+func redactURLError(err error) error {
+	var uerr *url.Error
+	if !errors.As(err, &uerr) {
+		return err
+	}
+	redacted := "<redacted>"
+	if u, perr := url.Parse(uerr.URL); perr == nil {
+		u.RawQuery = ""
+		u.User = nil
+		redacted = u.String() + "?<redacted>"
+	}
+	return &url.Error{Op: uerr.Op, URL: redacted, Err: uerr.Err}
+}
 
 // Result represents the metrics collected from Google PageSpeed Insights.
 type Result struct {
@@ -49,13 +72,13 @@ func Collect(ctx context.Context, targetURL string, apiKey string) (*Result, err
 
 	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", redactURLError(err))
 	}
 
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("psi api request failed: %w", err)
+		return nil, fmt.Errorf("psi api request failed: %w", redactURLError(err))
 	}
 	defer resp.Body.Close()
 
